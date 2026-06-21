@@ -15,6 +15,14 @@ desktop app.
 
 > Status: personal project / work in progress. Used as a reference and writing tool.
 
+## Screenshots
+
+| Editor + live analysis | Substitutions + piano |
+|:---:|:---:|
+| ![Musiicode editor and color-coded preview](docs/main.png) | ![Chord substitution menu with piano diagram](docs/substitutions.png) |
+| Command palette (⌘K) | Themes |
+| ![Command palette](docs/commands.png) | ![Musiicode themes](docs/themes.png) |
+
 ## Features
 
 - **Text-first editor** with a live preview pane.
