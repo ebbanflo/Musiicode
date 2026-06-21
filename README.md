@@ -1,8 +1,13 @@
 # Musiicode
 
+[![Live demo](https://img.shields.io/badge/▶_Live_demo-Musiicode-89b4fa?style=for-the-badge)](https://ebbanflo.github.io/Musiicode/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-a6e3a1?style=for-the-badge)](./LICENSE)
+
 A music-writing IDE — write chord charts and lead sheets like code, with live harmonic
 analysis, chord substitutions, key transposition, piano-shape diagrams, and color coding
 by harmonic function.
+
+**▶ Try it live:** <https://ebbanflo.github.io/Musiicode/>
 
 It's a single self-contained `index.html` — no build step, no dependencies, no network
 calls. Open it in a browser, or wrap it with [Tauri](https://tauri.app/) for a native
