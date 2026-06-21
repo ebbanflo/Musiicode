@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Musiicode — a music-writing IDE</title>
+<style>
+  :root {
+    --bg: #1e1e2e;            --bg-2: #181825;       --panel: #232334;
+    --editor-bg: #1a1a28;     --text: #cdd6f4;       --muted: #6c7086;
+    --line: #313244;          --accent: #89b4fa;     --caret: #f5e0dc;
+    --sel: #45475a;           --header: #11111b;
+    --fn-tonic: #a6e3a1;      --fn-sub: #89b4fa;     --fn-dom: #f38ba8;
+    --fn-chrom: #cba6f7;      --fn-unknown: #9399b2; --section: #fab387;
+    --lyric: #bac2de;         --shadow: rgba(0,0,0,.45);
+  }
+  [data-theme="light"] {
+    --bg: #f5f5fa;            --bg-2: #eaeaf2;       --panel: #ffffff;
+    --editor-bg: #fbfbfd;     --text: #1f2335;       --muted: #8086a0;
+    --line: #e2e2ee;          --accent: #2563eb;     --caret: #d4006a;
+    --sel: #d7e3ff;           --header: #eef0f7;
+    --fn-tonic: #1a8f4a;      --fn-sub: #2563eb;     --fn-dom: #d62246;
+    --fn-chrom: #8b3fd6;      --fn-unknown: #8086a0; --section: #d97706;
+    --lyric: #3a3f55;         --shadow: rgba(0,0,0,.12);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--text); overflow: hidden;
+  }
+  .app { display: flex; flex-direction: column; height: 100vh; }
+
+  /* ---- top bar ---- */
+  .topbar {
+    display: flex; align-items: center; gap: 14px; padding: 8px 14px;
+    background: var(--header); border-bottom: 1px solid var(--line);
+    -webkit-app-region: drag; flex-shrink: 0;
+  }
+  .brand { font-weight: 700; letter-spacing: .5px; font-size: 14px; }
+  .brand .dot { color: var(--accent); }
+  .topbar .spacer { flex: 1; }
+  .pill {
+    -webkit-app-region: no-drag; background: var(--panel); border: 1px solid var(--line);
+    color: var(--text); border-radius: 8px; padding: 5px 10px; font-size: 12px;
+    cursor: pointer; display: inline-flex; align-items: center; gap: 6px; user-select: none;
+  }
+  .pill:hover { border-color: var(--accent); }
+  .pill b { color: var(--accent); font-variant-numeric: tabular-nums; }
+  .kbd { font-size: 10px; color: var(--muted); border: 1px solid var(--line);
+    border-radius: 4px; padding: 1px 5px; }
+
+  /* ---- main split ---- */
+  .main { display: flex; flex: 1; min-height: 0; }
+  .pane { display: flex; flex-direction: column; min-width: 0; }
+  .pane.editor { width: 44%; flex: 0 0 auto; }
+  .pane.preview { flex: 1 1 0; background: var(--bg-2); }
+  /* draggable splitter */
+  .divider { flex: 0 0 6px; cursor: col-resize; background: var(--line);
+    position: relative; transition: background .15s; }
+  .divider::after { content: ""; position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%,-50%); width: 2px; height: 30px; border-radius: 2px;
+    background: var(--muted); opacity: .5; }
+  .divider:hover, .divider.dragging { background: var(--accent); }
+  .divider:hover::after, .divider.dragging::after { opacity: 0; }
+  body.col-resizing { cursor: col-resize; user-select: none; }
+  body.col-resizing textarea#src { pointer-events: none; }
+  .pane-head {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted);
+    padding: 6px 14px; border-bottom: 1px solid var(--line); display:flex; gap:10px; align-items:center;
+  }
+  .pane-head .spacer { flex:1; }
+  .pane-head a { color: var(--muted); cursor:pointer; text-decoration: none; }
+  .pane-head a:hover { color: var(--accent); }
+
+  /* ---- editor ---- */
+  .editor-wrap { position: relative; flex: 1; min-height: 0; }
+  textarea#src {
+    position: absolute; inset: 0; width: 100%; height: 100%; resize: none; border: 0;
+    background: var(--editor-bg); color: var(--text); padding: 14px 14px 14px 14px;
+    font-family: "SF Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+    font-size: 14px; line-height: 1.7; tab-size: 4; outline: none; caret-color: var(--caret);
+    white-space: pre; overflow: auto;
+  }
+  textarea#src::selection { background: var(--sel); }
+
+  /* ---- preview ---- */
+  .preview-scroll { flex: 1; overflow: auto; padding: 22px 26px 120px; }
+  .doc-title { font-size: 24px; font-weight: 700; margin: 0 0 2px; }
+  .doc-meta { color: var(--muted); font-size: 12px; margin-bottom: 22px;
+    display:flex; gap:14px; flex-wrap:wrap; }
+  .doc-meta span b { color: var(--accent); }
+  .section-h { color: var(--section); font-weight: 700; font-size: 13px;
+    text-transform: uppercase; letter-spacing: 1.5px; margin: 24px 0 10px; }
+
+  /* bars */
+  .bar-row { display: flex; flex-wrap: wrap; gap: 0; margin: 8px 0; }
+  .bar {
+    border: 1px solid var(--line); border-right: 0; padding: 10px 8px 8px;
+    min-width: 120px; display: flex; gap: 14px; align-items: flex-start;
+    position: relative;
+  }
+  .bar:first-child { border-radius: 6px 0 0 6px; }
+  .bar-row .bar:last-child { border-right: 1px solid var(--line); border-radius: 0 6px 6px 0; }
+  .bar::before { content: ""; position: absolute; left: 0; top: 6px; bottom: 6px;
+    width: 2px; background: var(--line); }
+
+  /* chord chip */
+  .chip { cursor: pointer; user-select: none; text-align: center; line-height: 1.25;
+    border-radius: 5px; padding: 2px 5px; transition: background .12s; }
+  .chip:hover { background: var(--sel); }
+  .chip .sym { font-weight: 700; font-size: 15px;
+    font-family: ui-monospace, Menlo, monospace; }
+  .chip .rn { font-size: 10px; color: var(--muted); margin-top: 1px;
+    font-family: ui-monospace, Menlo, monospace; }
+  .chip .notes { display:block; font-size: 10px; color: var(--accent); margin-top: 2px;
+    font-family: ui-monospace, Menlo, monospace; letter-spacing: .5px; }
+  .tip { position: fixed; z-index: 70; background: var(--header); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12px;
+    box-shadow: 0 8px 22px var(--shadow); pointer-events: none; display: none; text-align: center;
+    font-family: ui-monospace, Menlo, monospace; }
+  .tip.show { display: block; }
+  .tip .tiprow { white-space: nowrap; margin-bottom: 6px; }
+  .tip .tnotes { font-weight: 700; color: var(--accent); }
+  .tip .tname { color: var(--muted); margin-right: 6px; }
+  .piano { display: block; }
+  .tip .piano { margin: 0 auto; }
+  .pop .piano { margin: 0 auto; }
+  .fn-tonic .sym { color: var(--fn-tonic); }
+  .fn-sub   .sym { color: var(--fn-sub); }
+  .fn-dom   .sym { color: var(--fn-dom); }
+  .fn-chrom .sym { color: var(--fn-chrom); }
+  .fn-unknown .sym { color: var(--fn-unknown); }
+
+  /* lyric lines */
+  .lyric-line { display: flex; flex-wrap: wrap; align-items: flex-end;
+    margin: 6px 0; row-gap: 4px; }
+  .lyseg { display: inline-flex; flex-direction: column; align-items: flex-start; }
+  .lyseg .chip { padding: 0 2px; text-align: left; }
+  .lyseg .chip .sym { font-size: 14px; }
+  .lyseg .ly { color: var(--lyric); font-size: 16px; white-space: pre; min-height: 1.2em; }
+  .lyseg.nochord .ly { padding-top: 0; }
+  .lyseg.nochord { padding-top: 18px; }
+  .plain-lyric { color: var(--lyric); font-size: 16px; margin: 6px 0; }
+
+  .legend { display:flex; gap:16px; flex-wrap:wrap; margin-top: 30px;
+    padding-top:14px; border-top:1px solid var(--line); font-size:12px; color:var(--muted); }
+  .legend i { display:inline-block; width:10px; height:10px; border-radius:3px;
+    margin-right:5px; vertical-align:middle; }
+
+  /* ---- popover (substitutions) ---- */
+  .pop {
+    position: fixed; z-index: 50; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; box-shadow: 0 12px 34px var(--shadow); min-width: 220px;
+    padding: 6px; font-size: 13px; display: none;
+  }
+  .pop.show { display: block; }
+  .pop .pop-h { font-size: 11px; color: var(--muted); padding: 6px 8px 4px;
+    text-transform: uppercase; letter-spacing: 1px; }
+  .pop .opt { display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    padding: 7px 8px; border-radius: 7px; cursor: pointer; }
+  .pop .opt:hover { background: var(--sel); }
+  .pop .opt .o-sym { font-family: ui-monospace, Menlo, monospace; font-weight: 700; }
+  .pop .opt .o-lbl { color: var(--muted); font-size: 11px; }
+  .pop .sep { height:1px; background: var(--line); margin: 4px 2px; }
+
+  /* ---- command palette ---- */
+  .palette-bg { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 100; display: none; }
+  .palette-bg.show { display: block; }
+  .palette { position: absolute; top: 14%; left: 50%; transform: translateX(-50%);
+    width: 520px; max-width: 92vw; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: 0 20px 60px var(--shadow); overflow: hidden; }
+  .palette input { width: 100%; border: 0; background: transparent; color: var(--text);
+    font-size: 15px; padding: 14px 16px; outline: none; border-bottom: 1px solid var(--line); }
+  .palette .cmds { max-height: 320px; overflow: auto; padding: 6px; }
+  .palette .cmd { display: flex; justify-content: space-between; align-items: center;
+    padding: 9px 12px; border-radius: 8px; cursor: pointer; }
+  .palette .cmd.active, .palette .cmd:hover { background: var(--sel); }
+  .palette .cmd .c-desc { color: var(--muted); font-size: 11px; }
+
+  /* ---- autocomplete ---- */
+  .ac { position: fixed; z-index: 60; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; box-shadow: 0 8px 22px var(--shadow); padding: 4px; display: none;
+    font-family: ui-monospace, Menlo, monospace; font-size: 13px; min-width: 150px; }
+  .ac.show { display: block; }
+  .ac .ai { padding: 5px 9px; border-radius: 6px; cursor: pointer; display:flex; justify-content:space-between; gap:14px; }
+  .ac .ai.active { background: var(--sel); }
+  .ac .ai .hint { color: var(--muted); font-size: 11px; }
+  .mirror { position: absolute; visibility: hidden; white-space: pre-wrap; word-wrap: break-word;
+    top: 0; left: 0; pointer-events: none; }
+
+  .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+    background: var(--panel); border:1px solid var(--line); color: var(--text);
+    padding: 9px 16px; border-radius: 9px; font-size: 13px; box-shadow: 0 8px 24px var(--shadow);
+    opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 200; }
+  .toast.show { opacity: 1; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; }
+
+  /* ---- print: only the rendered chart, keep colors ---- */
+  @media print {
+    .topbar, .pane.editor, .divider, .pane-head, .pop, .tip, .ac, .palette-bg,
+    .toast, #exportPop { display: none !important; }
+    .main { display: block; height: auto; }
+    .pane.preview { width: 100%; background: #fff; }
+    body, .app, .pane.preview { height: auto; overflow: visible; }
+    .preview-scroll { overflow: visible; padding: 0; }
+    .chip { break-inside: avoid; }
+    .bar-row, .lyric-line { break-inside: avoid; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand">Musii<span class="dot">·</span>code</div>
+    <div class="pill" id="keyPill">Key <b id="keyLabel">C</b></div>
+    <div class="pill" id="downBtn" title="Transpose down a semitone">▼ −1</div>
+    <div class="pill" id="upBtn" title="Transpose up a semitone">▲ +1</div>
+    <div class="spacer"></div>
+    <div class="pill" id="paletteBtn">⌘ Commands <span class="kbd">⌘K</span></div>
+    <div class="pill" id="exportBtn" title="Export Markdown or print to PDF">⤓ Export</div>
+    <div class="pill" id="notesBtn" title="Show the notes inside every chord">♪ Notes</div>
+    <div class="pill" id="themeBtn">◐ Theme</div>
+  </div>
+
+  <div class="main">
+    <div class="pane editor">
+      <div class="pane-head">Source
+        <span class="spacer"></span>
+        <a id="helpBtn">syntax help</a>
+      </div>
+      <div class="editor-wrap">
+        <textarea id="src" spellcheck="false" autocomplete="off"></textarea>
+        <div class="mirror" id="mirror"></div>
+      </div>
+    </div>
+    <div class="divider" id="divider" title="Drag to resize · double-click to reset"></div>
+    <div class="pane preview">
+      <div class="pane-head">Preview
+        <span class="spacer"></span>
+        <span style="color:var(--muted)">click any chord for substitutions</span>
+      </div>
+      <div class="preview-scroll" id="preview"></div>
+    </div>
+  </div>
+</div>
+
+<div class="pop" id="pop"></div>
+<div class="pop" id="exportPop"></div>
+<div class="tip" id="tip"></div>
+<div class="ac" id="ac"></div>
+<div class="palette-bg" id="paletteBg">
+  <div class="palette">
+    <input id="palInput" placeholder="Type a command…  (transpose, key, theme, substitute…)" />
+    <div class="cmds" id="palCmds"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   MUSIICODE — music theory engine
+   ============================================================ */
+const SHARP = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const FLAT  = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+const NOTE_PC = { 'C':0,'D':2,'E':4,'F':5,'G':7,'A':9,'B':11 };
+const FLAT_KEYS = new Set(['F','Bb','Eb','Ab','Db','Gb','Cb','Dm','Gm','Cm','Fm','Bbm','Ebm','Abm']);
+
+function noteToPc(name){
+  const m = /^([A-Ga-g])([#b]?)/.exec(name);
+  if(!m) return null;
+  let pc = NOTE_PC[m[1].toUpperCase()];
+  if(m[2]==='#') pc = (pc+1)%12;
+  if(m[2]==='b') pc = (pc+11)%12;
+  return pc;
+}
+function pcToName(pc, useFlats){ return (useFlats?FLAT:SHARP)[((pc%12)+12)%12]; }
+function keyUsesFlats(keyName){ return FLAT_KEYS.has(keyName) || /b/.test(keyName); }
+
+/* ---- chord parsing ----
+   returns {root, rootName, quality, bass, bassPc, valid, info} */
+function parseChord(sym){
+  if(!sym) return {valid:false};
+  let s = sym.trim();
+  const m = /^([A-Ga-g])([#b]?)(.*)$/.exec(s);
+  if(!m) return {valid:false, raw:sym};
+  const rootName = m[1].toUpperCase()+m[2];
+  const root = noteToPc(rootName);
+  let rest = m[3];
+  let bass=null, bassPc=null;
+  const slash = rest.indexOf('/');
+  if(slash>=0){
+    const b = rest.slice(slash+1);
+    rest = rest.slice(0,slash);
+    bassPc = noteToPc(b);
+    if(bassPc!=null) bass = b.charAt(0).toUpperCase()+b.slice(1);
+  }
+  return {valid: root!=null, raw:sym, root, rootName, quality:rest, bass, bassPc,
+          info: qualityInfo(rest)};
+}
+
+/* classify a quality string into triad type + flags */
+function qualityInfo(q){
+  const x = q.toLowerCase();
+  const isMaj7tag = /maj7|maj9|maj13|△|ma7/.test(x);
+  let triad='major', dominant=false;
+  let dim = /dim|°|o(?![a-z])/.test(x);
+  let halfDim = /m7b5|ø|m7-5/.test(x);
+  let aug = /aug|\+|#5/.test(x);
+  let sus = /sus/.test(x);
+  let minor = (/^m(?!aj)/.test(x) || /^-/.test(x) || /^min/.test(x)) && !halfDim;
+  if(halfDim){ triad='dim'; }
+  else if(dim){ triad='dim'; }
+  else if(aug){ triad='aug'; }
+  else if(minor){ triad='minor'; }
+  else { triad='major'; }
+  // dominant = has a 7/9/11/13 but not maj7, and major-ish third
+  if(!isMaj7tag && /(7|9|11|13)/.test(x) && (triad==='major') && !sus) dominant=true;
+  if(!isMaj7tag && /(7|9|11|13)/.test(x) && sus) dominant=true; // sus7 ~ dominant function
+  return {triad, dominant, halfDim, dim, aug, sus, maj7:isMaj7tag, minor};
+}
+
+/* ---- scale / diatonic ---- */
+const MAJOR_STEPS = [0,2,4,5,7,9,11];
+const MAJOR_QUAL  = ['','m','m','','','m','dim'];
+const RN_BASE     = ['I','ii','iii','IV','V','vi','vii'];
+
+function diatonicChord(keyPc, degIndex, useFlats){
+  const pc = (keyPc + MAJOR_STEPS[degIndex])%12;
+  return pcToName(pc, useFlats) + MAJOR_QUAL[degIndex];
+}
+
+/* analyze a chord in a key -> {roman, fn} fn in tonic/sub/dom/chrom/unknown */
+function analyze(chord, keyPc){
+  if(!chord.valid) return {roman:'?', fn:'unknown'};
+  const deg = ((chord.root - keyPc)+12)%12;
+  const idx = MAJOR_STEPS.indexOf(deg);
+  const info = chord.info;
+  // build roman numeral text
+  function caseRn(base, info){
+    let r = base;
+    if(info.triad==='minor'||info.triad==='dim') r = base.toLowerCase();
+    else r = base.toUpperCase();
+    if(info.dim && !info.halfDim) r += '°';
+    if(info.halfDim) r += 'ø';
+    if(info.aug) r += '+';
+    if(info.maj7) r += 'maj7';
+    else if(info.dominant) r += '7';
+    return r;
+  }
+  if(idx>=0){
+    // diatonic position
+    const base = RN_BASE[idx];
+    let fn;
+    if(idx===0||idx===2||idx===5) fn='tonic';
+    else if(idx===1||idx===3) fn='sub';
+    else fn='dom';
+    // applied/secondary dominant sitting on a diatonic degree
+    if(info.dominant && !(idx===4)) fn='dom';
+    return {roman: caseRn(base, info), fn};
+  }
+  // chromatic root -> spell with flats relative to key
+  const names = ['I','bII','II','bIII','III','IV','#IV','V','bVI','VI','bVII','VII'];
+  let base = names[deg] || '?';
+  let r = base;
+  if(info.triad==='minor'||info.triad==='dim') r = r.toLowerCase();
+  if(info.dim&&!info.halfDim) r+='°'; if(info.halfDim) r+='ø'; if(info.aug) r+='+';
+  if(info.maj7) r+='maj7'; else if(info.dominant) r+='7';
+  return {roman:r, fn:'chrom'};
+}
+
+/* ---- transposition of a single chord symbol ---- */
+function transposeSymbol(sym, interval, useFlats){
+  const c = parseChord(sym);
+  if(!c.valid) return sym;
+  const newRoot = pcToName((c.root+interval)%12, useFlats);
+  let out = newRoot + c.quality;
+  if(c.bass!=null) out += '/' + pcToName((c.bassPc+interval)%12, useFlats);
+  return out;
+}
+
+/* ---- chord tones: spell the notes that make up a chord ----
+   returns array of note names (root first), respecting key/root spelling */
+function getChordTones(chord){
+  if(!chord || !chord.valid) return [];
+  const q = chord.quality.toLowerCase();
+  const info = chord.info;
+  // collect {deg, semi} chord tones in musical stacking order (root,3,5,7,9,11,13)
+  const tones = [];
+  const add = (deg, semi) => { if(!tones.some(t=>t.deg===deg)) tones.push({deg, semi}); };
+  add(1, 0); // root
+  // third (or suspension)
+  if(info.sus){ /sus2/.test(q) ? add(2,2) : add(4,5); }
+  else if(info.triad==='minor' || info.triad==='dim') add(3,3);
+  else add(3,4);
+  // fifth
+  if(info.dim || info.halfDim) add(5,6);
+  else if(info.aug || /#5/.test(q)) add(5,8);
+  else if(/b5/.test(q)) add(5,6);
+  else add(5,7);
+  // sixth / seventh
+  const isDim7 = info.dim && !info.halfDim && /(?:dim)?7/.test(q);
+  if(isDim7) add(7,9);                         // diminished 7th (bb7)
+  else if(info.halfDim) add(7,10);             // m7b5
+  else if(info.maj7) add(7,11);                // major 7th
+  else if(/(?:^|[^b#0-9])6/.test(q)) add(6,9); // 6 / 6-9 chord
+  else if(/7|9|11|13/.test(q)) add(7,10);      // dominant / minor 7th
+  // upper extensions
+  if(/9|add9/.test(q)) add(9, /b9/.test(q)?1 : (/#9/.test(q)?3:2));
+  if(/11/.test(q)) add(11, /#11/.test(q)?6:5);
+  if(/13/.test(q)) add(13, /b13/.test(q)?8:9);
+  return tones.map(t => ({deg:t.deg, semi:t.semi, name: spellTone(chord.rootName, chord.root, t.deg, t.semi)}));
+}
+function getChordNotes(chord){ return getChordTones(chord).map(t => t.name); }
+/* spell a chord tone on its correct scale-letter so 7ths/9ths read right (Bb not A#) */
+const LETTERS = ['C','D','E','F','G','A','B'];
+function spellTone(rootName, rootPc, deg, semi){
+  const rli = LETTERS.indexOf(rootName[0].toUpperCase());
+  const letter = LETTERS[(rli + (deg-1)) % 7];
+  const naturalPc = NOTE_PC[letter];
+  const target = (rootPc + semi) % 12;
+  let delta = ((target - naturalPc) % 12 + 12) % 12;
+  if(delta > 6) delta -= 12;
+  const acc = ({'-2':'bb','-1':'b','0':'','1':'#','2':'##'})[delta] ?? '';
+  return letter + acc;
+}
+
+/* ---- piano diagram: render a 2-octave keyboard with chord tones lit ----
+   keys are placed at (root + interval) so the chord climbs the keyboard as its real shape */
+function pianoSVG(chord){
+  const tones = getChordTones(chord);
+  if(!tones.length) return '';
+  const rootPc = chord.root;
+  const lit = {}; // absolute semitone (0..23) -> 'root' | 'tone'
+  tones.forEach(t => { lit[rootPc + t.semi] = (t.semi===0 ? 'root' : 'tone'); });
+  const w=18, h=78, bw=11, bh=48;
+  const whiteSemis=[0,2,4,5,7,9,11];
+  const blackBoundary={1:1, 3:2, 6:4, 8:5, 10:6}; // white index of right neighbour, per octave
+  const fillFor = st => st==='root' ? 'var(--caret)' : st==='tone' ? 'var(--accent)' : null;
+  let whites='', blacks='';
+  for(let oct=0; oct<2; oct++){
+    whiteSemis.forEach((n, wi)=>{
+      const s=oct*12+n, x=(oct*7+wi)*w, st=lit[s];
+      whites += `<rect x="${x}" y="0" width="${w}" height="${h}" rx="2.5" fill="${fillFor(st)||'#fafafa'}" stroke="#8a8a8a" stroke-width="1"/>`;
+    });
+  }
+  for(let oct=0; oct<2; oct++){
+    for(const nn in blackBoundary){
+      const n=+nn, s=oct*12+n, x=(oct*7+blackBoundary[n])*w - bw/2, st=lit[s];
+      blacks += `<rect x="${x}" y="0" width="${bw}" height="${bh}" rx="1.5" fill="${fillFor(st)||'#1b1b1b'}" stroke="#000" stroke-width="0.6"/>`;
+    }
+  }
+  const W=14*w;
+  return `<svg class="piano" viewBox="0 0 ${W} ${h}" width="${W}" height="${h}" xmlns="http://www.w3.org/2000/svg">${whites}${blacks}</svg>`;
+}
+
+/* ============================================================
+   SUBSTITUTIONS
+   ============================================================ */
+function getSubstitutions(chord, keyPc, useFlats){
+  const out = [];
+  const seen = new Set();
+  const push = (sym, label)=>{ if(sym && sym!==chord.raw.trim() && !seen.has(sym)){ seen.add(sym); out.push({sym,label}); } };
+  const info = chord.info;
+  const root = chord.root;
+
+  // tritone substitution for dominant chords
+  if(info.dominant){
+    push(pcToName((root+6)%12,useFlats)+'7', 'Tritone sub');
+  }
+  // relative major/minor
+  if(info.triad==='major' && !info.dominant){
+    push(pcToName((root+9)%12,useFlats)+'m7', 'Relative minor');
+    if(!info.maj7) push(chord.rootName+'maj7','Add maj7');
+    push(chord.rootName+'6','Add 6th');
+  }
+  if(info.triad==='minor'){
+    push(pcToName((root+3)%12,useFlats), 'Relative major');
+    if(!/7/.test(chord.quality)) push(chord.rootName+'m7','Add 7th');
+    push(chord.rootName+'m9','Add 9th');
+  }
+  if(info.dominant){
+    if(!/9|13/.test(chord.quality)) push(chord.rootName+'9','Extend to 9');
+    push(chord.rootName+'13','Extend to 13');
+    push(chord.rootName+'7sus4','Suspend (7sus4)');
+  }
+
+  // same-function diatonic swaps
+  const deg = ((root - keyPc)+12)%12;
+  const idx = MAJOR_STEPS.indexOf(deg);
+  if(idx>=0){
+    const group = (idx===0||idx===2||idx===5)?[0,2,5]
+                : (idx===1||idx===3)?[1,3]
+                : [4,6];
+    group.filter(g=>g!==idx).forEach(g=>{
+      push(diatonicChord(keyPc,g,useFlats), 'Same function ('+RN_BASE[g]+')');
+    });
+  }
+
+  // secondary dominant of this chord  (V7 / X)
+  push(pcToName((root+7)%12,useFlats)+'7', 'Secondary dom (V7/'+ (idx>=0?RN_BASE[idx]:'x') +')');
+
+  // modal interchange when chord is the tonic
+  if(idx===0){
+    push(pcToName((keyPc+10)%12,useFlats),'Borrowed bVII');
+    push(pcToName((keyPc+5)%12,useFlats)+'m','Borrowed iv');
+    push(pcToName((keyPc+8)%12,useFlats),'Borrowed bVI');
+  }
+  return out.slice(0,9);
+}
+
+/* ============================================================
+   DOCUMENT PARSING
+   line types: directive | section | bars | lyric | blank | plain
+   each chord token tracked with {line, start, end} for editing
+   ============================================================ */
+function parseDoc(text){
+  const lines = text.split('\n');
+  const doc = { title:'', key:'C', time:'4/4', keyPc:0, useFlats:false, blocks:[] };
+  lines.forEach((raw, li)=>{
+    const line = raw.replace(/\s+$/,'');
+    const dir = /^\s*(title|key|time)\s*:\s*(.+)$/i.exec(line);
+    if(dir){
+      const k = dir[1].toLowerCase(), v = dir[2].trim();
+      if(k==='title') doc.title=v;
+      if(k==='key'){ doc.key=v; }
+      if(k==='time') doc.time=v;
+      doc.blocks.push({type:'directive', line:li});
+      return;
+    }
+    if(/^\s*#/.test(line)){
+      doc.blocks.push({type:'section', text: line.replace(/^\s*#+\s*/,''), line:li});
+      return;
+    }
+    if(line.trim()===''){ doc.blocks.push({type:'blank', line:li}); return; }
+    if(line.includes('[') && /\[[^\]]+\]/.test(line)){
+      doc.blocks.push({type:'lyric', segs: tokenizeLyric(line, li), line:li});
+      return;
+    }
+    if(line.includes('|')){
+      doc.blocks.push({type:'bars', bars: tokenizeBars(line, li), line:li});
+      return;
+    }
+    // line of bare chord tokens?
+    const toks = line.trim().split(/\s+/);
+    if(toks.length && toks.every(t=>parseChord(t).valid)){
+      doc.blocks.push({type:'bars', bars:[{ chords: tokenizeBarChords(line, li, 0) }], line:li});
+      return;
+    }
+    doc.blocks.push({type:'plain', text:line, line:li});
+  });
+  doc.keyPc = noteToPc(doc.key) ?? 0;
+  doc.useFlats = keyUsesFlats(doc.key);
+  return doc;
+}
+
+function tokenizeBarChords(text, li, offset){
+  const chords=[]; const re=/\S+/g; let m;
+  while((m=re.exec(text))){
+    if(m[0]==='|') continue;
+    const c = parseChord(m[0]);
+    if(c.valid) chords.push({ sym:m[0], start:offset+m.index, end:offset+m.index+m[0].length, line:li, chord:c });
+  }
+  return chords;
+}
+function tokenizeBars(line, li){
+  // split on | but keep char positions
+  const bars=[]; let pos=0; const parts=line.split('|');
+  let cursor=0;
+  parts.forEach((p,i)=>{
+    const startIdx = cursor;
+    cursor += p.length + 1; // +1 for the '|'
+    if(p.trim()==='' && (i===0 || i===parts.length-1)) return;
+    if(p.trim()==='') { bars.push({chords:[]}); return; }
+    bars.push({ chords: tokenizeBarChords(p, li, startIdx) });
+  });
+  return bars;
+}
+function tokenizeLyric(line, li){
+  const segs=[]; const re=/\[([^\]]+)\]/g; let last=0; let m;
+  let pending=null;
+  // we walk: text before a bracket belongs to the *previous* chord
+  let idx=0;
+  const tokens=[];
+  while((m=re.exec(line))){
+    const before = line.slice(idx, m.index);
+    tokens.push({type:'text', text:before});
+    tokens.push({type:'chord', sym:m[1], start:m.index+1, end:m.index+1+m[1].length, chord:parseChord(m[1]), line:li});
+    idx = re.lastIndex;
+  }
+  tokens.push({type:'text', text: line.slice(idx)});
+  // assemble segments: each chord starts a segment that owns following text
+  let cur=null;
+  // leading text with no chord
+  if(tokens.length && tokens[0].type==='text' && tokens[0].text!==''){
+    segs.push({chord:null, ly:tokens[0].text});
+  }
+  for(let i=0;i<tokens.length;i++){
+    const t=tokens[i];
+    if(t.type==='chord'){
+      const next = tokens[i+1];
+      const ly = (next && next.type==='text') ? next.text : '';
+      segs.push({chord:t, ly});
+    }
+  }
+  return segs;
+}
+
+/* ============================================================
+   RENDERING
+   ============================================================ */
+const previewEl = document.getElementById('preview');
+function chipHtml(tok, keyPc){
+  const c = tok.chord;
+  const a = analyze(c, keyPc);
+  const notes = getChordNotes(c).join(' ');
+  const notesLine = showNotes ? `<span class="notes">${escapeHtml(notes)}</span>` : '';
+  return `<span class="chip fn-${a.fn}" data-line="${tok.line}" data-start="${tok.start}" data-end="${tok.end}" data-sym="${escapeAttr(tok.sym)}" data-notes="${escapeAttr(notes)}">`
+       + `<span class="sym">${escapeHtml(tok.sym)}</span><span class="rn">${escapeHtml(a.roman)}</span>${notesLine}</span>`;
+}
+function render(doc){
+  let html='';
+  if(doc.title) html += `<h1 class="doc-title">${escapeHtml(doc.title)}</h1>`;
+  html += `<div class="doc-meta"><span>Key <b>${escapeHtml(doc.key)}</b></span>`
+        + `<span>Time <b>${escapeHtml(doc.time)}</b></span></div>`;
+  doc.blocks.forEach(b=>{
+    if(b.type==='section') html += `<div class="section-h">${escapeHtml(b.text)}</div>`;
+    else if(b.type==='bars'){
+      html += `<div class="bar-row">`;
+      b.bars.forEach(bar=>{
+        html += `<div class="bar">`;
+        if(bar.chords.length===0) html += `<span style="color:var(--muted)">·</span>`;
+        bar.chords.forEach(ch=> html += chipHtml(ch, doc.keyPc));
+        html += `</div>`;
+      });
+      html += `</div>`;
+    }
+    else if(b.type==='lyric'){
+      html += `<div class="lyric-line">`;
+      b.segs.forEach(seg=>{
+        if(seg.chord){
+          html += `<span class="lyseg">${chipHtml(seg.chord, doc.keyPc)}<span class="ly">${escapeHtml(seg.ly)}</span></span>`;
+        } else {
+          html += `<span class="lyseg nochord"><span class="ly">${escapeHtml(seg.ly)}</span></span>`;
+        }
+      });
+      html += `</div>`;
+    }
+    else if(b.type==='plain' && b.text.trim()!=='') html += `<div class="plain-lyric">${escapeHtml(b.text)}</div>`;
+    else if(b.type==='blank') html += `<div style="height:8px"></div>`;
+  });
+  html += legendHtml();
+  previewEl.innerHTML = html;
+}
+function legendHtml(){
+  return `<div class="legend">
+    <span><i style="background:var(--fn-tonic)"></i>Tonic (I iii vi)</span>
+    <span><i style="background:var(--fn-sub)"></i>Subdominant (ii IV)</span>
+    <span><i style="background:var(--fn-dom)"></i>Dominant (V vii°)</span>
+    <span><i style="background:var(--fn-chrom)"></i>Chromatic / borrowed</span>
+  </div>`;
+}
+function escapeHtml(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function escapeAttr(s){ return escapeHtml(s).replace(/'/g,'&#39;'); }
+
+/* ============================================================
+   STATE + WIRING
+   ============================================================ */
+const srcEl = document.getElementById('src');
+let doc = null;
+let showNotes = false;
+function refresh(){ doc = parseDoc(srcEl.value); render(doc); document.getElementById('keyLabel').textContent = doc.key; }
+
+/* toggle: always show notes under every chord */
+document.getElementById('notesBtn').onclick = function(){
+  showNotes = !showNotes;
+  this.style.color = showNotes ? 'var(--accent)' : '';
+  refresh();
+};
+
+const DEFAULT_DOC =
+`title: Untitled Song
+key: C
+time: 4/4
+
+# Intro
+| Cmaj7 | Am7 | Dm7 | G7 |
+
+# Verse
+[C]Twinkle [G]twinkle [Am]little [F]star
+[F]How I [C]wonder [G]what you [C]are
+
+# Bridge
+| Em7 | A7 | Dm7 | G7 |
+`;
+srcEl.value = DEFAULT_DOC;
+refresh();
+srcEl.addEventListener('input', ()=>{ refresh(); maybeAutocomplete(); });
+
+/* ---- replace a chord at an exact source location ---- */
+function replaceAtSource(line, start, end, newSym){
+  const lines = srcEl.value.split('\n');
+  if(line>=lines.length) return;
+  const L = lines[line];
+  lines[line] = L.slice(0,start) + newSym + L.slice(end);
+  srcEl.value = lines.join('\n');
+  refresh();
+}
+
+/* ---- hover tooltip: show the notes in a chord ---- */
+const tipEl = document.getElementById('tip');
+previewEl.addEventListener('mouseover', e=>{
+  const chip = e.target.closest('.chip');
+  if(!chip) return;
+  const notes = chip.dataset.notes || '';
+  const c = parseChord(chip.dataset.sym);
+  tipEl.innerHTML = `<div class="tiprow"><span class="tname">${escapeHtml(chip.dataset.sym)}</span> <span class="tnotes">${escapeHtml(notes)}</span></div>${pianoSVG(c)}`;
+  const r = chip.getBoundingClientRect();
+  tipEl.classList.add('show');
+  let left = r.left + r.width/2 - tipEl.offsetWidth/2;
+  left = Math.max(8, Math.min(left, window.innerWidth - tipEl.offsetWidth - 8));
+  tipEl.style.left = left+'px';
+  tipEl.style.top = Math.max(8, r.top - tipEl.offsetHeight - 8)+'px';
+});
+previewEl.addEventListener('mouseout', e=>{
+  if(e.target.closest('.chip')) tipEl.classList.remove('show');
+});
+
+/* ---- substitution popover ---- */
+const popEl = document.getElementById('pop');
+previewEl.addEventListener('click', e=>{
+  const chip = e.target.closest('.chip');
+  if(!chip){ hidePop(); return; }
+  e.stopPropagation();
+  tipEl.classList.remove('show');
+  openSubMenu(chip);
+});
+function openSubMenu(chip){
+  const line=+chip.dataset.line, start=+chip.dataset.start, end=+chip.dataset.end;
+  const sym = chip.dataset.sym;
+  const c = parseChord(sym);
+  const subs = getSubstitutions(c, doc.keyPc, doc.useFlats);
+  const notes = getChordNotes(c).join(' ');
+  let html = `<div class="pop-h">Substitute &nbsp;<b>${escapeHtml(sym)}</b></div>`;
+  html += `<div class="opt" style="cursor:default"><span class="o-lbl">notes</span><span class="o-sym" style="color:var(--accent)">${escapeHtml(notes)}</span></div>`;
+  html += `<div style="padding:4px 8px 8px">${pianoSVG(c)}</div><div class="sep"></div>`;
+  if(subs.length===0) html += `<div class="opt"><span class="o-lbl">no suggestions</span></div>`;
+  subs.forEach(s=>{
+    html += `<div class="opt" data-sym="${escapeAttr(s.sym)}"><span class="o-sym">${escapeHtml(s.sym)}</span><span class="o-lbl">${escapeHtml(s.label)}</span></div>`;
+  });
+  html += `<div class="sep"></div>`;
+  html += `<div class="opt" data-rename="1"><span class="o-lbl">✎ Type a chord manually…</span></div>`;
+  popEl.innerHTML = html;
+  const r = chip.getBoundingClientRect();
+  popEl.style.left = Math.min(r.left, window.innerWidth-250)+'px';
+  popEl.style.top = (r.bottom+6)+'px';
+  popEl.classList.add('show');
+  popEl.querySelectorAll('.opt').forEach(opt=>{
+    opt.addEventListener('click', ()=>{
+      if(opt.dataset.rename){
+        const v = prompt('Replace '+sym+' with:', sym);
+        if(v){ replaceAtSource(line,start,end,v.trim()); toast('Replaced with '+v.trim()); }
+      } else {
+        replaceAtSource(line,start,end,opt.dataset.sym);
+        toast(sym+' → '+opt.dataset.sym);
+      }
+      hidePop();
+    });
+  });
+}
+function hidePop(){ popEl.classList.remove('show'); }
+document.addEventListener('click', e=>{ if(!e.target.closest('.pop') && !e.target.closest('.chip')) hidePop(); });
+
+/* ============================================================
+   TRANSPOSITION COMMANDS
+   ============================================================ */
+function transposeDoc(interval, targetKeyName){
+  const lines = srcEl.value.split('\n');
+  const curKeyPc = doc.keyPc;
+  let useFlats;
+  let newKeyName;
+  if(targetKeyName){
+    newKeyName = targetKeyName;
+    interval = ((noteToPc(targetKeyName) - curKeyPc)+12)%12;
+    useFlats = keyUsesFlats(targetKeyName);
+  } else {
+    const np = ((curKeyPc + interval)%12+12)%12;
+    useFlats = keyUsesFlats(doc.key) && interval%12===0 ? doc.useFlats : (interval<0);
+    // pick spelling that best fits the new key: default to sharps unless flat-friendly
+    newKeyName = pcToName(np, preferFlatsForPc(np));
+    useFlats = keyUsesFlats(newKeyName);
+  }
+  const out = lines.map(raw=>{
+    const dir = /^(\s*key\s*:\s*)(.+)$/i.exec(raw);
+    if(dir) return dir[1]+newKeyName;
+    if(/^\s*(title|time)\s*:/i.test(raw)) return raw;
+    if(/^\s*#/.test(raw)) return raw;
+    return transposeLine(raw, interval, useFlats);
+  });
+  srcEl.value = out.join('\n');
+  refresh();
+  toast('Transposed to '+newKeyName);
+}
+function preferFlatsForPc(pc){
+  // common spelling: F,Bb,Eb,Ab,Db,Gb prefer flats
+  return [1,3,5,6,8,10].includes(pc) ? [5,10,3,8,1].includes(pc) : false;
+}
+function transposeLine(line, interval, useFlats){
+  // transpose chords inside [..] and bare/bar chord tokens
+  if(/\[[^\]]+\]/.test(line)){
+    return line.replace(/\[([^\]]+)\]/g,(_,s)=>'['+transposeSymbol(s,interval,useFlats)+']');
+  }
+  if(line.includes('|') || isBareChordLine(line)){
+    return line.replace(/\S+/g, t=> t==='|' ? t : (parseChord(t).valid ? transposeSymbol(t,interval,useFlats) : t));
+  }
+  return line;
+}
+function isBareChordLine(line){
+  const toks=line.trim().split(/\s+/).filter(Boolean);
+  return toks.length>0 && toks.every(t=>parseChord(t).valid);
+}
+
+document.getElementById('upBtn').onclick   = ()=>transposeDoc(1);
+document.getElementById('downBtn').onclick = ()=>transposeDoc(-1);
+document.getElementById('keyPill').onclick = ()=>{
+  const v = prompt('Change key to (e.g. G, Bb, F#):', doc.key);
+  if(v) transposeDoc(0, v.trim());
+};
+
+/* ============================================================
+   THEME
+   ============================================================ */
+document.getElementById('themeBtn').onclick = ()=>{
+  const r = document.documentElement;
+  r.setAttribute('data-theme', r.getAttribute('data-theme')==='dark'?'light':'dark');
+};
+
+/* ============================================================
+   EXPORT  (Markdown download / print to PDF)
+   ============================================================ */
+const exportPop = document.getElementById('exportPop');
+document.getElementById('exportBtn').onclick = e=>{
+  e.stopPropagation();
+  exportPop.innerHTML =
+    `<div class="pop-h">Export</div>
+     <div class="opt" data-x="md"><span class="o-sym">Markdown</span><span class="o-lbl">.md chord chart</span></div>
+     <div class="opt" data-x="pdf"><span class="o-sym">PDF / Print</span><span class="o-lbl">print the colored sheet</span></div>`;
+  const r = e.currentTarget.getBoundingClientRect();
+  exportPop.style.left = Math.min(r.left, window.innerWidth-240)+'px';
+  exportPop.style.top = (r.bottom+6)+'px';
+  exportPop.classList.add('show');
+  exportPop.querySelectorAll('.opt').forEach(o=> o.onclick = ()=>{
+    exportPop.classList.remove('show');
+    o.dataset.x==='md' ? exportMarkdown() : exportPDF();
+  });
+};
+document.addEventListener('click', e=>{
+  if(!e.target.closest('#exportPop') && e.target.id!=='exportBtn') exportPop.classList.remove('show');
+});
+
+function leadSheetLines(segs){
+  let chordLine='', lyricLine='';
+  segs.forEach(seg=>{
+    const lyr = seg.ly || '';
+    if(seg.chord){
+      if(chordLine.length < lyricLine.length) chordLine += ' '.repeat(lyricLine.length - chordLine.length);
+      chordLine += seg.chord.sym + ' ';
+      lyricLine += lyr;
+      if(lyricLine.length < chordLine.length) lyricLine += ' '.repeat(chordLine.length - lyricLine.length);
+    } else { lyricLine += lyr; }
+  });
+  return { chordLine: chordLine.replace(/\s+$/,''), lyricLine: lyricLine.replace(/\s+$/,'') };
+}
+function buildMarkdown(d){
+  const out = ['# ' + (d.title || 'Untitled Song'), '', `**Key:** ${d.key}  ·  **Time:** ${d.time}`, ''];
+  d.blocks.forEach(b=>{
+    if(b.type==='section'){ out.push('', '## ' + b.text, ''); }
+    else if(b.type==='bars'){
+      const line = b.bars.map(bar => bar.chords.map(c=>c.sym).join(' ') || '·').join(' | ');
+      out.push('`| ' + line + ' |`', '');
+    } else if(b.type==='lyric'){
+      const {chordLine, lyricLine} = leadSheetLines(b.segs);
+      out.push('```', chordLine, lyricLine, '```');
+    } else if(b.type==='plain' && b.text.trim()){ out.push(b.text); }
+  });
+  return out.join('\n') + '\n';
+}
+function exportMarkdown(){
+  const md = buildMarkdown(doc);
+  const blob = new Blob([md], {type:'text/markdown'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (doc.title || 'song').replace(/[^\w\-]+/g,'_') + '.md';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+  toast('Exported Markdown');
+}
+function exportPDF(){
+  const root = document.documentElement;
+  const prev = root.getAttribute('data-theme');
+  root.setAttribute('data-theme','light');           // print reads best on light
+  const restore = ()=>{ root.setAttribute('data-theme', prev); window.removeEventListener('afterprint', restore); };
+  window.addEventListener('afterprint', restore);
+  toast('Opening print… choose “Save as PDF”');
+  setTimeout(()=> window.print(), 150);
+}
+
+/* ============================================================
+   RESIZABLE SOURCE / PREVIEW DIVIDER
+   ============================================================ */
+(function(){
+  const divider = document.getElementById('divider');
+  const editor  = document.querySelector('.pane.editor');
+  const main    = document.querySelector('.main');
+  const KEY='musiicode-editor-width', MIN_EDITOR=240, MIN_PREVIEW=280;
+  function clamp(px){
+    const max = main.clientWidth - MIN_PREVIEW - 6;
+    return Math.max(MIN_EDITOR, Math.min(px, max));
+  }
+  try { const s = localStorage.getItem(KEY); if(s) editor.style.width = clamp(+s)+'px'; } catch(e){}
+  let dragging=false;
+  divider.addEventListener('mousedown', e=>{
+    dragging=true; divider.classList.add('dragging'); document.body.classList.add('col-resizing');
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', e=>{
+    if(!dragging) return;
+    editor.style.width = clamp(e.clientX - main.getBoundingClientRect().left) + 'px';
+    if(typeof hideAc==='function') hideAc();
+  });
+  window.addEventListener('mouseup', ()=>{
+    if(!dragging) return;
+    dragging=false; divider.classList.remove('dragging'); document.body.classList.remove('col-resizing');
+    try { localStorage.setItem(KEY, parseInt(editor.style.width,10)); } catch(e){}
+  });
+  divider.addEventListener('dblclick', ()=>{           // reset to default split
+    editor.style.width = '44%';
+    try { localStorage.removeItem(KEY); } catch(e){}
+  });
+})();
+
+/* ============================================================
+   COMMAND PALETTE
+   ============================================================ */
+const COMMANDS = [
+  {name:'Transpose up a semitone', desc:'+1', run:()=>transposeDoc(1)},
+  {name:'Transpose down a semitone', desc:'-1', run:()=>transposeDoc(-1)},
+  {name:'Transpose up a whole tone', desc:'+2', run:()=>transposeDoc(2)},
+  {name:'Transpose down a whole tone', desc:'-2', run:()=>transposeDoc(-2)},
+  {name:'Change key…', desc:'set target key', run:()=>{const v=prompt('Key:',doc.key); if(v) transposeDoc(0,v.trim());}},
+  {name:'Toggle light / dark theme', desc:'theme', run:()=>document.getElementById('themeBtn').click()},
+  {name:'Toggle chord notes', desc:'show notes under every chord', run:()=>document.getElementById('notesBtn').click()},
+  {name:'Export to Markdown', desc:'download .md chart', run:()=>exportMarkdown()},
+  {name:'Export to PDF / Print', desc:'print colored sheet', run:()=>exportPDF()},
+  {name:'Insert bar line  |', desc:'editor', run:()=>insertAtCaret(' | ')},
+  {name:'Insert section header', desc:'# Name', run:()=>insertAtCaret('\n# Section\n')},
+  {name:'Insert chord-over-lyric line', desc:'[C]word…', run:()=>insertAtCaret('\n[C]lyric [G]here\n')},
+  {name:'Show syntax help', desc:'how to write', run:()=>showHelp()},
+];
+const palBg=document.getElementById('paletteBg'), palInput=document.getElementById('palInput'), palCmds=document.getElementById('palCmds');
+let palActive=0, palFiltered=COMMANDS;
+function openPalette(){ palBg.classList.add('show'); palInput.value=''; palFiltered=COMMANDS; palActive=0; renderPalette(); palInput.focus(); }
+function closePalette(){ palBg.classList.remove('show'); }
+function renderPalette(){
+  palCmds.innerHTML = palFiltered.map((c,i)=>`<div class="cmd ${i===palActive?'active':''}" data-i="${i}"><span>${escapeHtml(c.name)}</span><span class="c-desc">${escapeHtml(c.desc)}</span></div>`).join('');
+  palCmds.querySelectorAll('.cmd').forEach(el=>el.onclick=()=>{ palFiltered[+el.dataset.i].run(); closePalette(); });
+}
+palInput.addEventListener('input', ()=>{
+  const q=palInput.value.toLowerCase();
+  palFiltered=COMMANDS.filter(c=>c.name.toLowerCase().includes(q)||c.desc.toLowerCase().includes(q));
+  palActive=0; renderPalette();
+});
+palInput.addEventListener('keydown', e=>{
+  if(e.key==='ArrowDown'){ palActive=Math.min(palActive+1,palFiltered.length-1); renderPalette(); e.preventDefault(); }
+  else if(e.key==='ArrowUp'){ palActive=Math.max(palActive-1,0); renderPalette(); e.preventDefault(); }
+  else if(e.key==='Enter'){ if(palFiltered[palActive]){ palFiltered[palActive].run(); closePalette(); } }
+  else if(e.key==='Escape'){ closePalette(); }
+});
+palBg.addEventListener('click', e=>{ if(e.target===palBg) closePalette(); });
+document.getElementById('paletteBtn').onclick=openPalette;
+window.addEventListener('keydown', e=>{
+  if((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==='k'){ e.preventDefault(); openPalette(); }
+  if(e.key==='Escape'){ hidePop(); hideAc(); }
+});
+function insertAtCaret(t){
+  const s=srcEl.selectionStart, e=srcEl.selectionEnd;
+  srcEl.value=srcEl.value.slice(0,s)+t+srcEl.value.slice(e);
+  srcEl.selectionStart=srcEl.selectionEnd=s+t.length;
+  srcEl.focus(); refresh();
+}
+
+/* ============================================================
+   CHORD AUTOCOMPLETE (in editor)
+   ============================================================ */
+const acEl=document.getElementById('ac'), mirror=document.getElementById('mirror');
+const QUALITIES=['','maj7','m','m7','7','m7b5','dim7','sus4','sus2','6','9','add9','13','m9','maj9'];
+let acItems=[], acActive=0, acWordStart=0;
+function maybeAutocomplete(){
+  const pos=srcEl.selectionStart;
+  const upto=srcEl.value.slice(0,pos);
+  const lineStart=upto.lastIndexOf('\n')+1;
+  const wordMatch=/([A-Ga-g][#b]?[A-Za-z0-9]*)$/.exec(upto);
+  // don't autocomplete inside directive/section lines
+  const curLine=upto.slice(lineStart);
+  if(/^\s*(title|key|time)\s*:/i.test(curLine) || /^\s*#/.test(curLine)){ hideAc(); return; }
+  if(!wordMatch){ hideAc(); return; }
+  const word=wordMatch[1];
+  acWordStart=pos-word.length;
+  const rootM=/^([A-Ga-g][#b]?)(.*)$/.exec(word);
+  if(!rootM){ hideAc(); return; }
+  const root=rootM[1].charAt(0).toUpperCase()+rootM[1].slice(1), tail=rootM[2];
+  acItems=QUALITIES.filter(q=>q.startsWith(tail)).slice(0,7).map(q=>({sym:root+q, q:q||'maj triad'}));
+  if(acItems.length===0 || (acItems.length===1 && acItems[0].sym===word)){ hideAc(); return; }
+  acActive=0; renderAc(); positionAc(pos);
+}
+function renderAc(){
+  acEl.innerHTML=acItems.map((it,i)=>`<div class="ai ${i===acActive?'active':''}" data-i="${i}"><span>${escapeHtml(it.sym)}</span><span class="hint">${escapeHtml(it.q)}</span></div>`).join('');
+  acEl.querySelectorAll('.ai').forEach(el=>el.onmousedown=ev=>{ ev.preventDefault(); acceptAc(+el.dataset.i); });
+  acEl.classList.add('show');
+}
+function positionAc(pos){
+  // mirror technique for caret coords
+  const cs=getComputedStyle(srcEl);
+  ['fontFamily','fontSize','lineHeight','padding','letterSpacing','whiteSpace','wordWrap','width'].forEach(p=>{});
+  mirror.style.cssText=`position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;`+
+    `font-family:${cs.fontFamily};font-size:${cs.fontSize};line-height:${cs.lineHeight};`+
+    `padding:${cs.padding};letter-spacing:${cs.letterSpacing};width:${srcEl.clientWidth}px;`;
+  const before=srcEl.value.slice(0,pos);
+  mirror.textContent=before;
+  const span=document.createElement('span'); span.textContent='​'; mirror.appendChild(span);
+  const wrapRect=srcEl.getBoundingClientRect();
+  const sx=span.offsetLeft - srcEl.scrollLeft, sy=span.offsetTop - srcEl.scrollTop;
+  acEl.style.left=(wrapRect.left+sx)+'px';
+  acEl.style.top=(wrapRect.top+sy+22)+'px';
+}
+function hideAc(){ acEl.classList.remove('show'); acItems=[]; }
+function acceptAc(i){
+  const it=acItems[i]; if(!it) return;
+  const pos=srcEl.selectionStart;
+  srcEl.value=srcEl.value.slice(0,acWordStart)+it.sym+srcEl.value.slice(pos);
+  const np=acWordStart+it.sym.length;
+  srcEl.selectionStart=srcEl.selectionEnd=np;
+  hideAc(); refresh(); srcEl.focus();
+}
+srcEl.addEventListener('keydown', e=>{
+  if(!acEl.classList.contains('show')) return;
+  if(e.key==='ArrowDown'){ acActive=Math.min(acActive+1,acItems.length-1); renderAc(); e.preventDefault(); }
+  else if(e.key==='ArrowUp'){ acActive=Math.max(acActive-1,0); renderAc(); e.preventDefault(); }
+  else if(e.key==='Tab' || (e.key==='Enter' && acItems.length)){ acceptAc(acActive); e.preventDefault(); }
+  else if(e.key==='Escape'){ hideAc(); }
+});
+srcEl.addEventListener('blur', ()=>setTimeout(hideAc,120));
+srcEl.addEventListener('scroll', hideAc);
+srcEl.addEventListener('click', hideAc);
+
+/* ============================================================
+   HELP + TOAST
+   ============================================================ */
+function showHelp(){
+  alert(
+`MUSIICODE SYNTAX
+
+Directives (top of file):
+  title: My Song
+  key: C
+  time: 4/4
+
+Section header:
+  # Verse
+
+Barred chords (use | as bar lines):
+  | Cmaj7 Am7 | Dm7 G7 |
+
+Chords over lyrics (inline brackets):
+  [C]Twinkle [G]twinkle [Am]little [F]star
+
+INTERACT
+  • Hover any chord → notes + a piano diagram of the shape
+  • Click any chord in the preview → substitution menu (notes + keyboard)
+  • ♪ Notes button → show notes under every chord
+  • ⤓ Export → Markdown file, or print/save as PDF
+  • Type a chord in the editor → autocomplete (Tab to accept)
+  • ⌘K / Ctrl+K → command palette
+  • Key pill / ▲▼ → transpose; colors show harmonic function`);
+}
+document.getElementById('helpBtn').onclick=showHelp;
+let toastT;
+function toast(msg){
+  const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),1600);
+}
+
+/* expose engine for testing */
+window.MUSIICODE = { parseChord, analyze, transposeSymbol, getSubstitutions, getChordNotes, getChordTones, pianoSVG, parseDoc, noteToPc, pcToName, diatonicChord };
+</script>
+</body>
+</html>
