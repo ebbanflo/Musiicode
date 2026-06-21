@@ -16,15 +16,19 @@ desktop app.
 - **Chord substitutions** — click any chord for tritone subs, relative major/minor,
   same-function diatonic swaps, secondary dominants, borrowed chords, and extensions.
   Picking one rewrites the source.
+- **Major & minor key analysis** — Roman numerals and harmonic function for both major
+  and minor keys (set `key: Am`, `F#m`, …).
 - **Key transposition** — semitone steps or jump to any key, with key-aware sharp/flat
   spelling (slash-chord basses included).
-- **Roman-numeral analysis** and **color coding** by function — tonic, subdominant,
-  dominant, and chromatic/borrowed.
+- **Color coding** by function — tonic, subdominant, dominant, and chromatic/borrowed.
 - **Chord notes + piano diagrams** on hover (and in the substitution menu); a toggle to
   show notes under every chord.
-- **Export** to Markdown, or print to PDF (preserves the colored sheet).
-- **Dark / light themes**, a **command palette**, chord **autocomplete**, and a
-  **resizable** editor / preview split.
+- **Invalid-chord linting** — unrecognized chords are underlined with a count in the header.
+- **Tempo (BPM)** and time-signature display.
+- **Autosave** to local storage, plus **New / Open / Save** (`.txt` / `.md` / ChordPro).
+- **Export** to Markdown or source `.txt`, or print to PDF (preserves the colored sheet).
+- **Five themes** (dark, light, terminal, sepia, pastel), a **command palette**, chord
+  **autocomplete**, and a **resizable** editor / preview split.
 
 ## Quick start
 
@@ -76,10 +80,10 @@ self-contained and has no runtime dependencies.
 
 ## Roadmap
 
-- Minor-key Roman-numeral analysis (currently analyzes against the relative major)
 - Beat-accurate chord placement within bars
 - Nashville-number view
 - Altered-dominant (`alt`) chord parsing
+- ChordPro import/export round-tripping
 
 ## License
 

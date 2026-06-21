@@ -23,6 +23,33 @@
     --fn-chrom: #8b3fd6;      --fn-unknown: #8086a0; --section: #d97706;
     --lyric: #3a3f55;         --shadow: rgba(0,0,0,.12);
   }
+  [data-theme="terminal"] {
+    --bg: #0a0f0a;            --bg-2: #060a06;       --panel: #0e160e;
+    --editor-bg: #060b06;     --text: #2ee66a;       --muted: #2a7a45;
+    --line: #143b21;          --accent: #33ff99;     --caret: #b6ff00;
+    --sel: #173b22;           --header: #050805;
+    --fn-tonic: #33ff99;      --fn-sub: #00e0c8;     --fn-dom: #ffd166;
+    --fn-chrom: #ff7edb;      --fn-unknown: #4f8a63; --section: #c8ff5e;
+    --lyric: #74e69a;         --shadow: rgba(0,0,0,.6);
+  }
+  [data-theme="sepia"] {
+    --bg: #f4ecd8;            --bg-2: #ece0c5;       --panel: #fbf5e6;
+    --editor-bg: #f7f0dd;     --text: #4b3a2a;       --muted: #9c8568;
+    --line: #ddccaa;          --accent: #a8651f;     --caret: #b03a2e;
+    --sel: #e6d4ab;           --header: #e9dcbf;
+    --fn-tonic: #5f7d3a;      --fn-sub: #2f6f7d;     --fn-dom: #b04632;
+    --fn-chrom: #8a5a9c;      --fn-unknown: #9c8568; --section: #b87333;
+    --lyric: #5b4636;         --shadow: rgba(80,60,30,.22);
+  }
+  [data-theme="pastel"] {
+    --bg: #fdf3f8;            --bg-2: #f2f0fb;       --panel: #ffffff;
+    --editor-bg: #fbf5fb;     --text: #4a4566;       --muted: #a99fc4;
+    --line: #ecdcef;          --accent: #6aa8f2;     --caret: #f48fb1;
+    --sel: #f3e3f6;           --header: #f6ecfa;
+    --fn-tonic: #5bbf93;      --fn-sub: #5f9bf0;     --fn-dom: #ec6fa0;
+    --fn-chrom: #a98ce4;      --fn-unknown: #b3aacc; --section: #ef93bf;
+    --lyric: #5a5478;         --shadow: rgba(180,140,180,.22);
+  }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
   body {
@@ -131,6 +158,15 @@
   .fn-dom   .sym { color: var(--fn-dom); }
   .fn-chrom .sym { color: var(--fn-chrom); }
   .fn-unknown .sym { color: var(--fn-unknown); }
+  /* linting: unrecognized chord */
+  .chip.err .sym { color: var(--fn-dom);
+    text-decoration: underline wavy var(--fn-dom); text-underline-offset: 3px; }
+  .chip.err .rn { color: var(--fn-dom); }
+  .chip.lbl .sym { color: var(--muted); font-weight: 600; }
+  .bar-txt { color: var(--muted); font-style: italic; font-size: 13px; align-self: center; padding: 2px 4px; }
+  #lintStatus { color: var(--fn-dom); font-size: 11px; text-transform: none; letter-spacing: 0; }
+  .save-status { color: var(--muted); font-size: 11px; text-transform: none; letter-spacing: 0; }
+  .save-status.editing { color: var(--accent); }
 
   /* lyric lines */
   .lyric-line { display: flex; flex-wrap: wrap; align-items: flex-end;
@@ -153,6 +189,7 @@
     position: fixed; z-index: 50; background: var(--panel); border: 1px solid var(--line);
     border-radius: 10px; box-shadow: 0 12px 34px var(--shadow); min-width: 220px;
     padding: 6px; font-size: 13px; display: none;
+    max-height: calc(100vh - 24px); overflow-y: auto;
   }
   .pop.show { display: block; }
   .pop .pop-h { font-size: 11px; color: var(--muted); padding: 6px 8px 4px;
@@ -216,6 +253,7 @@
   <div class="topbar">
     <div class="brand">Musii<span class="dot">·</span>code</div>
     <div class="pill" id="keyPill">Key <b id="keyLabel">C</b></div>
+    <div class="pill" id="bpmPill" title="Set tempo (BPM)">♩ <b id="bpmLabel">—</b></div>
     <div class="pill" id="downBtn" title="Transpose down a semitone">▼ −1</div>
     <div class="pill" id="upBtn" title="Transpose up a semitone">▲ +1</div>
     <div class="spacer"></div>
@@ -228,7 +266,10 @@
   <div class="main">
     <div class="pane editor">
       <div class="pane-head">Source
+        <span id="saveStatus" class="save-status"></span>
         <span class="spacer"></span>
+        <a id="newBtn">new</a>
+        <a id="openBtn">open</a>
         <a id="helpBtn">syntax help</a>
       </div>
       <div class="editor-wrap">
@@ -240,6 +281,7 @@
     <div class="pane preview">
       <div class="pane-head">Preview
         <span class="spacer"></span>
+        <span id="lintStatus"></span>
         <span style="color:var(--muted)">click any chord for substitutions</span>
       </div>
       <div class="preview-scroll" id="preview"></div>
@@ -249,6 +291,7 @@
 
 <div class="pop" id="pop"></div>
 <div class="pop" id="exportPop"></div>
+<div class="pop" id="themePop"></div>
 <div class="tip" id="tip"></div>
 <div class="ac" id="ac"></div>
 <div class="palette-bg" id="paletteBg">
@@ -297,9 +340,12 @@ function parseChord(sym){
     bassPc = noteToPc(b);
     if(bassPc!=null) bass = b.charAt(0).toUpperCase()+b.slice(1);
   }
-  return {valid: root!=null, raw:sym, root, rootName, quality:rest, bass, bassPc,
+  const qualityOk = QUALITY_RE.test(rest.replace(/[()\s]/g,''));
+  return {valid: root!=null && qualityOk, raw:sym, root, rootName, quality:rest, bass, bassPc,
           info: qualityInfo(rest)};
 }
+/* a permissive grammar for chord-quality strings — rejects gibberish like "mja7" */
+const QUALITY_RE = /^(?:m|min|maj|ma|M|-|dim|o|°|aug|\+|ø)?(?:maj13|maj11|maj9|maj7|M7|Δ7?|6\/9|13|11|9|7|6|5|4|2)?(?:sus[24]?)?(?:add(?:2|4|6|9|11|13))?(?:alt)?(?:(?:b5|#5|b9|#9|#11|b13|b6|#4)+)?$/i;
 
 /* classify a quality string into triad type + flags */
 function qualityInfo(q){
@@ -326,49 +372,80 @@ function qualityInfo(q){
 const MAJOR_STEPS = [0,2,4,5,7,9,11];
 const MAJOR_QUAL  = ['','m','m','','','m','dim'];
 const RN_BASE     = ['I','ii','iii','IV','V','vi','vii'];
+// natural minor
+const MINOR_STEPS = [0,2,3,5,7,8,10];
+const MINOR_QUAL  = ['m','dim','','m','m','','']; // i ii° III iv v VI VII
+const RN_BASE_MIN = ['i','ii','III','iv','v','VI','VII'];
+const NUMERALS    = ['I','II','III','IV','V','VI','VII'];
 
-function diatonicChord(keyPc, degIndex, useFlats){
-  const pc = (keyPc + MAJOR_STEPS[degIndex])%12;
-  return pcToName(pc, useFlats) + MAJOR_QUAL[degIndex];
+function diatonicChord(keyPc, degIndex, useFlats, minor){
+  const steps = minor ? MINOR_STEPS : MAJOR_STEPS;
+  const qual  = minor ? MINOR_QUAL  : MAJOR_QUAL;
+  const pc = (keyPc + steps[degIndex])%12;
+  return pcToName(pc, useFlats) + qual[degIndex];
 }
 
-/* analyze a chord in a key -> {roman, fn} fn in tonic/sub/dom/chrom/unknown */
-function analyze(chord, keyPc){
+/* parse a key directive like "C", "Am", "F#m", "Bb minor" -> {pc, minor, root} */
+function parseKey(s){
+  const m = /^\s*([A-Ga-g][#b]?)\s*(m|min|minor|-)?\s*$/i.exec(s||'');
+  if(!m) return {pc:0, minor:false, root:'C'};
+  const root = m[1][0].toUpperCase() + m[1].slice(1);
+  return {pc: noteToPc(root), minor: !!m[2], root};
+}
+
+/* shared: build a roman numeral string, cased by the chord's actual quality */
+function caseRn(base, info){
+  let r = (info.triad==='minor' || info.triad==='dim') ? base.toLowerCase() : base.toUpperCase();
+  if(info.dim && !info.halfDim) r += '°';
+  if(info.halfDim) r += 'ø';
+  if(info.aug) r += '+';
+  if(info.maj7) r += 'maj7';
+  else if(info.dominant) r += '7';
+  return r;
+}
+
+/* analyze a chord in a key -> {roman, fn}; fn in tonic/sub/dom/chrom/unknown */
+function analyze(chord, keyPc, minor){
   if(!chord.valid) return {roman:'?', fn:'unknown'};
   const deg = ((chord.root - keyPc)+12)%12;
-  const idx = MAJOR_STEPS.indexOf(deg);
   const info = chord.info;
-  // build roman numeral text
-  function caseRn(base, info){
-    let r = base;
-    if(info.triad==='minor'||info.triad==='dim') r = base.toLowerCase();
-    else r = base.toUpperCase();
-    if(info.dim && !info.halfDim) r += '°';
-    if(info.halfDim) r += 'ø';
-    if(info.aug) r += '+';
-    if(info.maj7) r += 'maj7';
-    else if(info.dominant) r += '7';
-    return r;
+
+  if(minor){
+    const idx = MINOR_STEPS.indexOf(deg);
+    if(idx>=0){
+      let fn;
+      if(idx===0||idx===2||idx===5) fn='tonic';   // i  III  VI
+      else if(idx===1||idx===3)      fn='sub';     // ii° iv
+      else                            fn='dom';     // v   VII
+      if(info.dominant && idx!==4) fn='dom';        // applied dominant
+      return {roman: caseRn(RN_BASE_MIN[idx], info), fn};
+    }
+    // raised leading-tone harmony (harmonic minor): V or vii° on the natural 7
+    if(deg===11) return {roman: caseRn(info.dim||info.halfDim ? 'vii' : 'VII', info), fn:'dom'};
+    return chromatic(deg, info, true);
   }
+
+  const idx = MAJOR_STEPS.indexOf(deg);
   if(idx>=0){
-    // diatonic position
-    const base = RN_BASE[idx];
     let fn;
     if(idx===0||idx===2||idx===5) fn='tonic';
-    else if(idx===1||idx===3) fn='sub';
-    else fn='dom';
-    // applied/secondary dominant sitting on a diatonic degree
-    if(info.dominant && !(idx===4)) fn='dom';
-    return {roman: caseRn(base, info), fn};
+    else if(idx===1||idx===3)      fn='sub';
+    else                            fn='dom';
+    if(info.dominant && idx!==4) fn='dom';          // applied/secondary dominant
+    return {roman: caseRn(RN_BASE[idx], info), fn};
   }
-  // chromatic root -> spell with flats relative to key
+  return chromatic(deg, info, false);
+}
+/* spell a non-diatonic (chromatic) chord relative to the key */
+function chromatic(deg, info, minor){
   const names = ['I','bII','II','bIII','III','IV','#IV','V','bVI','VI','bVII','VII'];
-  let base = names[deg] || '?';
-  let r = base;
-  if(info.triad==='minor'||info.triad==='dim') r = r.toLowerCase();
-  if(info.dim&&!info.halfDim) r+='°'; if(info.halfDim) r+='ø'; if(info.aug) r+='+';
+  let r = names[deg] || '?';
+  r = (info.triad==='minor'||info.triad==='dim') ? r.toLowerCase() : r.toUpperCase();
+  if(info.dim && !info.halfDim) r+='°';
+  if(info.halfDim) r+='ø';
+  if(info.aug) r+='+';
   if(info.maj7) r+='maj7'; else if(info.dominant) r+='7';
-  return {roman:r, fn:'chrom'};
+  return {roman:r, fn: info.dominant ? 'dom' : 'chrom'};
 }
 
 /* ---- transposition of a single chord symbol ---- */
@@ -459,7 +536,8 @@ function pianoSVG(chord){
 /* ============================================================
    SUBSTITUTIONS
    ============================================================ */
-function getSubstitutions(chord, keyPc, useFlats){
+function getSubstitutions(chord, keyPc, useFlats, minor){
+  if(!chord || !chord.valid) return [];
   const out = [];
   const seen = new Set();
   const push = (sym, label)=>{ if(sym && sym!==chord.raw.trim() && !seen.has(sym)){ seen.add(sym); out.push({sym,label}); } };
@@ -487,26 +565,32 @@ function getSubstitutions(chord, keyPc, useFlats){
     push(chord.rootName+'7sus4','Suspend (7sus4)');
   }
 
-  // same-function diatonic swaps
+  // same-function diatonic swaps (respects major / minor)
+  const steps = minor ? MINOR_STEPS : MAJOR_STEPS;
+  const rnames = minor ? RN_BASE_MIN : RN_BASE;
   const deg = ((root - keyPc)+12)%12;
-  const idx = MAJOR_STEPS.indexOf(deg);
+  const idx = steps.indexOf(deg);
   if(idx>=0){
     const group = (idx===0||idx===2||idx===5)?[0,2,5]
                 : (idx===1||idx===3)?[1,3]
                 : [4,6];
     group.filter(g=>g!==idx).forEach(g=>{
-      push(diatonicChord(keyPc,g,useFlats), 'Same function ('+RN_BASE[g]+')');
+      push(diatonicChord(keyPc,g,useFlats,minor), 'Same function ('+rnames[g]+')');
     });
   }
 
   // secondary dominant of this chord  (V7 / X)
-  push(pcToName((root+7)%12,useFlats)+'7', 'Secondary dom (V7/'+ (idx>=0?RN_BASE[idx]:'x') +')');
+  push(pcToName((root+7)%12,useFlats)+'7', 'Secondary dom (V7/'+ (idx>=0?rnames[idx]:'x') +')');
 
-  // modal interchange when chord is the tonic
-  if(idx===0){
+  // tonic-specific colour: borrowing / Picardy
+  if(idx===0 && !minor){
     push(pcToName((keyPc+10)%12,useFlats),'Borrowed bVII');
     push(pcToName((keyPc+5)%12,useFlats)+'m','Borrowed iv');
     push(pcToName((keyPc+8)%12,useFlats),'Borrowed bVI');
+  }
+  if(idx===0 && minor){
+    push(chord.rootName, 'Picardy 3rd (major tonic)');
+    push(pcToName((keyPc+7)%12,useFlats)+'7','Harmonic-minor V7');
   }
   return out.slice(0,9);
 }
@@ -518,15 +602,16 @@ function getSubstitutions(chord, keyPc, useFlats){
    ============================================================ */
 function parseDoc(text){
   const lines = text.split('\n');
-  const doc = { title:'', key:'C', time:'4/4', keyPc:0, useFlats:false, blocks:[] };
+  const doc = { title:'', key:'C', time:'4/4', bpm:'', keyPc:0, useFlats:false, blocks:[] };
   lines.forEach((raw, li)=>{
     const line = raw.replace(/\s+$/,'');
-    const dir = /^\s*(title|key|time)\s*:\s*(.+)$/i.exec(line);
+    const dir = /^\s*(title|key|time|bpm|tempo)\s*:\s*(.+)$/i.exec(line);
     if(dir){
       const k = dir[1].toLowerCase(), v = dir[2].trim();
       if(k==='title') doc.title=v;
       if(k==='key'){ doc.key=v; }
       if(k==='time') doc.time=v;
+      if(k==='bpm' || k==='tempo') doc.bpm = v.replace(/[^\d.]/g,'');
       doc.blocks.push({type:'directive', line:li});
       return;
     }
@@ -551,7 +636,9 @@ function parseDoc(text){
     }
     doc.blocks.push({type:'plain', text:line, line:li});
   });
-  doc.keyPc = noteToPc(doc.key) ?? 0;
+  const k = parseKey(doc.key);
+  doc.keyPc = k.pc ?? 0;
+  doc.minor = k.minor;
   doc.useFlats = keyUsesFlats(doc.key);
   return doc;
 }
@@ -561,7 +648,10 @@ function tokenizeBarChords(text, li, offset){
   while((m=re.exec(text))){
     if(m[0]==='|') continue;
     const c = parseChord(m[0]);
-    if(c.valid) chords.push({ sym:m[0], start:offset+m.index, end:offset+m.index+m[0].length, line:li, chord:c });
+    const base = { sym:m[0], start:offset+m.index, end:offset+m.index+m[0].length, line:li, chord:c };
+    if(c.valid) chords.push({ ...base, kind:'chord' });
+    else if(/^[A-Ga-g]/.test(m[0])) chords.push({ ...base, kind:'error' });  // looks like a chord, failed to parse
+    else chords.push({ ...base, kind:'text' });                              // N.C., %, /, etc.
   }
   return chords;
 }
@@ -612,19 +702,32 @@ function tokenizeLyric(line, li){
    RENDERING
    ============================================================ */
 const previewEl = document.getElementById('preview');
-function chipHtml(tok, keyPc){
+let _lintCount = 0;
+function chipHtml(tok, doc){
   const c = tok.chord;
-  const a = analyze(c, keyPc);
+  const dataAttrs = `data-line="${tok.line}" data-start="${tok.start}" data-end="${tok.end}" data-sym="${escapeAttr(tok.sym)}"`;
+  if(!c.valid){
+    if(/^[A-Ga-g]/.test(tok.sym)){           // chord-like but unrecognized -> lint it
+      _lintCount++;
+      return `<span class="chip err" title="Unrecognized chord — click to fix" ${dataAttrs} data-notes="">`
+           + `<span class="sym">${escapeHtml(tok.sym)}</span><span class="rn">?</span></span>`;
+    }
+    return `<span class="chip lbl" ${dataAttrs} data-notes=""><span class="sym">${escapeHtml(tok.sym)}</span></span>`;
+  }
+  const a = analyze(c, doc.keyPc, doc.minor);
   const notes = getChordNotes(c).join(' ');
   const notesLine = showNotes ? `<span class="notes">${escapeHtml(notes)}</span>` : '';
-  return `<span class="chip fn-${a.fn}" data-line="${tok.line}" data-start="${tok.start}" data-end="${tok.end}" data-sym="${escapeAttr(tok.sym)}" data-notes="${escapeAttr(notes)}">`
+  return `<span class="chip fn-${a.fn}" ${dataAttrs} data-notes="${escapeAttr(notes)}">`
        + `<span class="sym">${escapeHtml(tok.sym)}</span><span class="rn">${escapeHtml(a.roman)}</span>${notesLine}</span>`;
 }
 function render(doc){
+  _lintCount = 0;
   let html='';
   if(doc.title) html += `<h1 class="doc-title">${escapeHtml(doc.title)}</h1>`;
-  html += `<div class="doc-meta"><span>Key <b>${escapeHtml(doc.key)}</b></span>`
-        + `<span>Time <b>${escapeHtml(doc.time)}</b></span></div>`;
+  html += `<div class="doc-meta"><span>Key <b>${escapeHtml(doc.key)}${doc.minor?' minor':''}</b></span>`
+        + `<span>Time <b>${escapeHtml(doc.time)}</b></span>`
+        + (doc.bpm ? `<span>♩ = <b>${escapeHtml(doc.bpm)}</b></span>` : '')
+        + `</div>`;
   doc.blocks.forEach(b=>{
     if(b.type==='section') html += `<div class="section-h">${escapeHtml(b.text)}</div>`;
     else if(b.type==='bars'){
@@ -632,7 +735,9 @@ function render(doc){
       b.bars.forEach(bar=>{
         html += `<div class="bar">`;
         if(bar.chords.length===0) html += `<span style="color:var(--muted)">·</span>`;
-        bar.chords.forEach(ch=> html += chipHtml(ch, doc.keyPc));
+        bar.chords.forEach(ch=> html += ch.kind==='text'
+          ? `<span class="bar-txt">${escapeHtml(ch.sym)}</span>`
+          : chipHtml(ch, doc));
         html += `</div>`;
       });
       html += `</div>`;
@@ -641,7 +746,7 @@ function render(doc){
       html += `<div class="lyric-line">`;
       b.segs.forEach(seg=>{
         if(seg.chord){
-          html += `<span class="lyseg">${chipHtml(seg.chord, doc.keyPc)}<span class="ly">${escapeHtml(seg.ly)}</span></span>`;
+          html += `<span class="lyseg">${chipHtml(seg.chord, doc)}<span class="ly">${escapeHtml(seg.ly)}</span></span>`;
         } else {
           html += `<span class="lyseg nochord"><span class="ly">${escapeHtml(seg.ly)}</span></span>`;
         }
@@ -653,12 +758,14 @@ function render(doc){
   });
   html += legendHtml();
   previewEl.innerHTML = html;
+  const lint = document.getElementById('lintStatus');
+  if(lint) lint.textContent = _lintCount ? `⚠ ${_lintCount} unknown chord${_lintCount>1?'s':''}` : '';
 }
 function legendHtml(){
   return `<div class="legend">
-    <span><i style="background:var(--fn-tonic)"></i>Tonic (I iii vi)</span>
-    <span><i style="background:var(--fn-sub)"></i>Subdominant (ii IV)</span>
-    <span><i style="background:var(--fn-dom)"></i>Dominant (V vii°)</span>
+    <span><i style="background:var(--fn-tonic)"></i>Tonic</span>
+    <span><i style="background:var(--fn-sub)"></i>Subdominant</span>
+    <span><i style="background:var(--fn-dom)"></i>Dominant</span>
     <span><i style="background:var(--fn-chrom)"></i>Chromatic / borrowed</span>
   </div>`;
 }
@@ -671,7 +778,30 @@ function escapeAttr(s){ return escapeHtml(s).replace(/'/g,'&#39;'); }
 const srcEl = document.getElementById('src');
 let doc = null;
 let showNotes = false;
-function refresh(){ doc = parseDoc(srcEl.value); render(doc); document.getElementById('keyLabel').textContent = doc.key; }
+function refresh(){
+  doc = parseDoc(srcEl.value); render(doc);
+  document.getElementById('keyLabel').textContent = doc.key;
+  document.getElementById('bpmLabel').textContent = doc.bpm || '—';
+}
+
+/* set / change / clear tempo via the bpm: directive */
+function setBpm(){
+  const v = prompt('Tempo in BPM (leave blank to remove):', doc.bpm || '');
+  if(v===null) return;
+  const lines = srcEl.value.split('\n');
+  let idx = lines.findIndex(l=>/^\s*(bpm|tempo)\s*:/i.test(l));
+  const clean = v.replace(/[^\d.]/g,'').trim();
+  if(clean===''){ if(idx>=0) lines.splice(idx,1); }
+  else if(idx>=0){ lines[idx] = lines[idx].replace(/(:\s*).*/, '$1'+clean); }
+  else {
+    let last=-1;
+    for(let i=0;i<lines.length;i++) if(/^\s*(title|key|time|bpm|tempo)\s*:/i.test(lines[i])) last=i;
+    lines.splice(last>=0 ? last+1 : 0, 0, 'bpm: '+clean);
+  }
+  srcEl.value = lines.join('\n'); refresh();
+  toast(clean ? 'Tempo: '+clean+' BPM' : 'Tempo removed');
+}
+document.getElementById('bpmPill').onclick = setBpm;
 
 /* toggle: always show notes under every chord */
 document.getElementById('notesBtn').onclick = function(){
@@ -684,6 +814,7 @@ const DEFAULT_DOC =
 `title: Untitled Song
 key: C
 time: 4/4
+bpm: 120
 
 # Intro
 | Cmaj7 | Am7 | Dm7 | G7 |
@@ -695,9 +826,57 @@ time: 4/4
 # Bridge
 | Em7 | A7 | Dm7 | G7 |
 `;
-srcEl.value = DEFAULT_DOC;
+/* ---- autosave: restore last document, persist on edit ---- */
+const LS_DOC = 'musiicode-doc';
+let saveTimer;
+function setSaveStatus(t, editing){
+  const el = document.getElementById('saveStatus');
+  if(el){ el.textContent = t; el.classList.toggle('editing', !!editing); }
+}
+function autosave(){
+  try { localStorage.setItem(LS_DOC, srcEl.value); } catch(e){}
+  setSaveStatus('Saved ✓', false);
+}
+try {
+  const saved = localStorage.getItem(LS_DOC);
+  srcEl.value = (saved!=null && saved.trim()!=='') ? saved : DEFAULT_DOC;
+} catch(e){ srcEl.value = DEFAULT_DOC; }
 refresh();
-srcEl.addEventListener('input', ()=>{ refresh(); maybeAutocomplete(); });
+setSaveStatus(localStorage.getItem(LS_DOC)!=null ? 'Saved ✓' : '', false);
+srcEl.addEventListener('input', ()=>{
+  refresh(); maybeAutocomplete();
+  setSaveStatus('Editing…', true);
+  clearTimeout(saveTimer); saveTimer = setTimeout(autosave, 600);
+});
+
+/* ---- new / open file / save source ---- */
+const fileInput = document.createElement('input');
+fileInput.type = 'file';
+fileInput.accept = '.txt,.md,.cho,.chordpro,.crd,.pro';
+fileInput.style.display = 'none';
+document.body.appendChild(fileInput);
+fileInput.addEventListener('change', ()=>{
+  const f = fileInput.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = ()=>{ srcEl.value = r.result; refresh(); autosave(); toast('Opened '+f.name); };
+  r.readAsText(f); fileInput.value='';
+});
+document.getElementById('openBtn').onclick = ()=> fileInput.click();
+document.getElementById('newBtn').onclick = ()=>{
+  if(confirm('Start a new blank song? This replaces the current text.')){
+    srcEl.value = 'title: New Song\nkey: C\ntime: 4/4\n\n';
+    refresh(); autosave();
+  }
+};
+function exportSource(){
+  const blob = new Blob([srcEl.value], {type:'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (doc.title || 'song').replace(/[^\w\-]+/g,'_') + '.txt';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+  toast('Saved source (.txt)');
+}
 
 /* ---- replace a chord at an exact source location ---- */
 function replaceAtSource(line, start, end, newSym){
@@ -741,7 +920,7 @@ function openSubMenu(chip){
   const line=+chip.dataset.line, start=+chip.dataset.start, end=+chip.dataset.end;
   const sym = chip.dataset.sym;
   const c = parseChord(sym);
-  const subs = getSubstitutions(c, doc.keyPc, doc.useFlats);
+  const subs = getSubstitutions(c, doc.keyPc, doc.useFlats, doc.minor);
   const notes = getChordNotes(c).join(' ');
   let html = `<div class="pop-h">Substitute &nbsp;<b>${escapeHtml(sym)}</b></div>`;
   html += `<div class="opt" style="cursor:default"><span class="o-lbl">notes</span><span class="o-sym" style="color:var(--accent)">${escapeHtml(notes)}</span></div>`;
@@ -753,10 +932,19 @@ function openSubMenu(chip){
   html += `<div class="sep"></div>`;
   html += `<div class="opt" data-rename="1"><span class="o-lbl">✎ Type a chord manually…</span></div>`;
   popEl.innerHTML = html;
+  popEl.classList.add('show');                 // show first so we can measure it
   const r = chip.getBoundingClientRect();
-  popEl.style.left = Math.min(r.left, window.innerWidth-250)+'px';
-  popEl.style.top = (r.bottom+6)+'px';
-  popEl.classList.add('show');
+  const pw = popEl.offsetWidth, ph = popEl.offsetHeight;
+  // horizontal: keep on screen
+  let left = Math.max(8, Math.min(r.left, window.innerWidth - pw - 8));
+  // vertical: drop below, but flip above if it would be cut off at the bottom
+  const spaceBelow = window.innerHeight - r.bottom;
+  let top;
+  if(spaceBelow < ph + 12 && r.top > spaceBelow) top = r.top - ph - 6;   // flip above
+  else top = r.bottom + 6;
+  top = Math.max(8, Math.min(top, window.innerHeight - ph - 8));         // final clamp
+  popEl.style.left = left+'px';
+  popEl.style.top = top+'px';
   popEl.querySelectorAll('.opt').forEach(opt=>{
     opt.addEventListener('click', ()=>{
       if(opt.dataset.rename){
@@ -789,7 +977,7 @@ function transposeDoc(interval, targetKeyName){
     const np = ((curKeyPc + interval)%12+12)%12;
     useFlats = keyUsesFlats(doc.key) && interval%12===0 ? doc.useFlats : (interval<0);
     // pick spelling that best fits the new key: default to sharps unless flat-friendly
-    newKeyName = pcToName(np, preferFlatsForPc(np));
+    newKeyName = pcToName(np, preferFlatsForPc(np)) + (doc.minor ? 'm' : '');  // keep minor
     useFlats = keyUsesFlats(newKeyName);
   }
   const out = lines.map(raw=>{
@@ -830,12 +1018,28 @@ document.getElementById('keyPill').onclick = ()=>{
 };
 
 /* ============================================================
-   THEME
+   THEME MENU
    ============================================================ */
-document.getElementById('themeBtn').onclick = ()=>{
-  const r = document.documentElement;
-  r.setAttribute('data-theme', r.getAttribute('data-theme')==='dark'?'light':'dark');
+const THEMES = [['dark','Dark'],['light','Light'],['terminal','Terminal'],['sepia','Sepia'],['pastel','Pastel']];
+const themePop = document.getElementById('themePop');
+const themeRoot = document.documentElement;
+function currentTheme(){ return themeRoot.getAttribute('data-theme') || 'dark'; }
+function setTheme(t){ themeRoot.setAttribute('data-theme', t); try{ localStorage.setItem('musiicode-theme', t); }catch(e){} }
+try { const t = localStorage.getItem('musiicode-theme'); if(t) themeRoot.setAttribute('data-theme', t); } catch(e){}
+document.getElementById('themeBtn').onclick = e=>{
+  e.stopPropagation();
+  const cur = currentTheme();
+  themePop.innerHTML = '<div class="pop-h">Theme</div>' + THEMES.map(([v,l])=>
+    `<div class="opt" data-theme="${v}"><span class="o-sym">${l}</span><span class="o-lbl">${v===cur?'✓':''}</span></div>`).join('');
+  const r = e.currentTarget.getBoundingClientRect();
+  themePop.style.left = Math.min(r.left, window.innerWidth-200)+'px';
+  themePop.style.top = (r.bottom+6)+'px';
+  themePop.classList.add('show');
+  themePop.querySelectorAll('.opt').forEach(o=> o.onclick = ()=>{ setTheme(o.dataset.theme); themePop.classList.remove('show'); });
 };
+document.addEventListener('click', e=>{
+  if(!e.target.closest('#themePop') && e.target.id!=='themeBtn') themePop.classList.remove('show');
+});
 
 /* ============================================================
    EXPORT  (Markdown download / print to PDF)
@@ -845,6 +1049,7 @@ document.getElementById('exportBtn').onclick = e=>{
   e.stopPropagation();
   exportPop.innerHTML =
     `<div class="pop-h">Export</div>
+     <div class="opt" data-x="txt"><span class="o-sym">Source</span><span class="o-lbl">.txt — re-openable</span></div>
      <div class="opt" data-x="md"><span class="o-sym">Markdown</span><span class="o-lbl">.md chord chart</span></div>
      <div class="opt" data-x="pdf"><span class="o-sym">PDF / Print</span><span class="o-lbl">print the colored sheet</span></div>`;
   const r = e.currentTarget.getBoundingClientRect();
@@ -853,7 +1058,8 @@ document.getElementById('exportBtn').onclick = e=>{
   exportPop.classList.add('show');
   exportPop.querySelectorAll('.opt').forEach(o=> o.onclick = ()=>{
     exportPop.classList.remove('show');
-    o.dataset.x==='md' ? exportMarkdown() : exportPDF();
+    const x = o.dataset.x;
+    if(x==='txt') exportSource(); else if(x==='md') exportMarkdown(); else exportPDF();
   });
 };
 document.addEventListener('click', e=>{
@@ -874,7 +1080,8 @@ function leadSheetLines(segs){
   return { chordLine: chordLine.replace(/\s+$/,''), lyricLine: lyricLine.replace(/\s+$/,'') };
 }
 function buildMarkdown(d){
-  const out = ['# ' + (d.title || 'Untitled Song'), '', `**Key:** ${d.key}  ·  **Time:** ${d.time}`, ''];
+  const meta = `**Key:** ${d.key}  ·  **Time:** ${d.time}` + (d.bpm ? `  ·  **BPM:** ${d.bpm}` : '');
+  const out = ['# ' + (d.title || 'Untitled Song'), '', meta, ''];
   d.blocks.forEach(b=>{
     if(b.type==='section'){ out.push('', '## ' + b.text, ''); }
     else if(b.type==='bars'){
@@ -950,8 +1157,12 @@ const COMMANDS = [
   {name:'Transpose up a whole tone', desc:'+2', run:()=>transposeDoc(2)},
   {name:'Transpose down a whole tone', desc:'-2', run:()=>transposeDoc(-2)},
   {name:'Change key…', desc:'set target key', run:()=>{const v=prompt('Key:',doc.key); if(v) transposeDoc(0,v.trim());}},
-  {name:'Toggle light / dark theme', desc:'theme', run:()=>document.getElementById('themeBtn').click()},
+  {name:'Set tempo (BPM)…', desc:'add or change BPM', run:()=>setBpm()},
+  {name:'Open theme menu', desc:'dark · light · terminal · sepia · pastel', run:()=>document.getElementById('themeBtn').click()},
   {name:'Toggle chord notes', desc:'show notes under every chord', run:()=>document.getElementById('notesBtn').click()},
+  {name:'New blank song', desc:'clear the editor', run:()=>document.getElementById('newBtn').click()},
+  {name:'Open file…', desc:'load a .txt / .md / chordpro', run:()=>document.getElementById('openBtn').click()},
+  {name:'Save source (.txt)', desc:'download re-openable source', run:()=>exportSource()},
   {name:'Export to Markdown', desc:'download .md chart', run:()=>exportMarkdown()},
   {name:'Export to PDF / Print', desc:'print colored sheet', run:()=>exportPDF()},
   {name:'Insert bar line  |', desc:'editor', run:()=>insertAtCaret(' | ')},
@@ -1004,7 +1215,7 @@ function maybeAutocomplete(){
   const wordMatch=/([A-Ga-g][#b]?[A-Za-z0-9]*)$/.exec(upto);
   // don't autocomplete inside directive/section lines
   const curLine=upto.slice(lineStart);
-  if(/^\s*(title|key|time)\s*:/i.test(curLine) || /^\s*#/.test(curLine)){ hideAc(); return; }
+  if(/^\s*(title|key|time|bpm|tempo)\s*:/i.test(curLine) || /^\s*#/.test(curLine)){ hideAc(); return; }
   if(!wordMatch){ hideAc(); return; }
   const word=wordMatch[1];
   acWordStart=pos-word.length;
@@ -1064,8 +1275,9 @@ function showHelp(){
 
 Directives (top of file):
   title: My Song
-  key: C
+  key: C           (use "Am", "F#m" etc. for minor keys)
   time: 4/4
+  bpm: 120        (optional tempo — or click the ♩ pill)
 
 Section header:
   # Verse
@@ -1083,7 +1295,11 @@ INTERACT
   • ⤓ Export → Markdown file, or print/save as PDF
   • Type a chord in the editor → autocomplete (Tab to accept)
   • ⌘K / Ctrl+K → command palette
-  • Key pill / ▲▼ → transpose; colors show harmonic function`);
+  • Key pill / ▲▼ → transpose; colors show harmonic function
+  • ♩ pill → set tempo (BPM)
+  • ◐ Theme → dark · light · terminal · sepia · pastel
+  • new / open → blank song or load a file; edits autosave
+  • unrecognized chords are underlined in red`);
 }
 document.getElementById('helpBtn').onclick=showHelp;
 let toastT;
