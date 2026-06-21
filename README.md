@@ -4,27 +4,83 @@ A music-writing IDE — write chord charts and lead sheets like code, with live 
 analysis, chord substitutions, key transposition, piano-shape diagrams, and color coding
 by harmonic function.
 
-It's a single self-contained `index.html` (no build step, no dependencies). Open it in a
-browser, or wrap it with [Tauri](https://tauri.app/) for a native desktop app.
+It's a single self-contained `index.html` — no build step, no dependencies, no network
+calls. Open it in a browser, or wrap it with [Tauri](https://tauri.app/) for a native
+desktop app.
+
+> Status: personal project / work in progress. Used as a reference and writing tool.
 
 ## Features
 
-- **Text-first editor** with live preview — directives (`key:`, `time:`, `title:`),
-  `# Section` headers, barred chords `| Cmaj7 Am7 | Dm7 G7 |`, and inline chord-over-lyric
-  lines `[C]Twinkle [G]twinkle`.
-- **Chord substitutions** — click any chord for tritone subs, relatives, same-function
-  diatonic swaps, secondary dominants, borrowed chords, and extensions.
-- **Key transposition** — semitone steps or jump to any key, with key-aware sharp/flat spelling.
-- **Roman-numeral analysis** and **color coding** by function (tonic / subdominant / dominant / chromatic).
-- **Chord notes + piano diagrams** on hover.
-- **Export** to Markdown or print to PDF.
-- Dark / light themes and a resizable editor / preview split.
+- **Text-first editor** with a live preview pane.
+- **Chord substitutions** — click any chord for tritone subs, relative major/minor,
+  same-function diatonic swaps, secondary dominants, borrowed chords, and extensions.
+  Picking one rewrites the source.
+- **Key transposition** — semitone steps or jump to any key, with key-aware sharp/flat
+  spelling (slash-chord basses included).
+- **Roman-numeral analysis** and **color coding** by function — tonic, subdominant,
+  dominant, and chromatic/borrowed.
+- **Chord notes + piano diagrams** on hover (and in the substitution menu); a toggle to
+  show notes under every chord.
+- **Export** to Markdown, or print to PDF (preserves the colored sheet).
+- **Dark / light themes**, a **command palette**, chord **autocomplete**, and a
+  **resizable** editor / preview split.
 
-## Usage
+## Quick start
 
-Open `index.html` in any modern browser. Press <kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd> for the
-command palette, or click **syntax help** in the editor header.
+Open `index.html` in any modern browser. That's it. Press <kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd>
+for the command palette, or click **syntax help** in the editor header.
+
+## Syntax
+
+```
+title: My Song          ← document directives (optional)
+key: C
+time: 4/4
+
+# Verse                 ← section header
+
+| Cmaj7 Am7 | Dm7 G7 |  ← barred chords, | is a bar line
+
+[C]Twinkle [G]twinkle [Am]little [F]star   ← chords inline above lyrics
+```
+
+| You write | It means |
+|-----------|----------|
+| `key: C` `time: 4/4` `title: …` | document settings |
+| `# Name` | a section header |
+| `\| Cmaj7 Am7 \| Dm7 G7 \|` | chords grouped into bars |
+| `[C]word` | a chord positioned above a lyric |
+
+Chord symbols follow normal lead-sheet notation: `C`, `Am7`, `Gmaj7`, `F#m7b5`, `Bdim7`,
+`Csus4`, `D7/F#`, `Eb13`, etc.
+
+## Keyboard / interactions
+
+| Action | How |
+|--------|-----|
+| Command palette | <kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd> |
+| Chord autocomplete | start typing a chord, <kbd>Tab</kbd> to accept |
+| See a chord's notes + piano shape | hover the chord in the preview |
+| Substitute a chord | click the chord in the preview |
+| Transpose | <kbd>▲</kbd>/<kbd>▼</kbd> buttons, or the Key pill |
+| Show notes under every chord | **♪ Notes** |
+| Export Markdown / PDF | **⤓ Export** |
+| Resize panes | drag the divider; double-click to reset |
+
+## Tech
+
+Plain HTML, CSS, and vanilla JavaScript in one file. The music-theory engine (chord
+parsing, transposition, Roman-numeral analysis, substitutions, and note spelling) is
+self-contained and has no runtime dependencies.
+
+## Roadmap
+
+- Minor-key Roman-numeral analysis (currently analyzes against the relative major)
+- Beat-accurate chord placement within bars
+- Nashville-number view
+- Altered-dominant (`alt`) chord parsing
 
 ## License
 
-MIT
+[MIT](./LICENSE) © 2026 Ebban
