@@ -44,8 +44,9 @@ desktop app.
 - **Tempo (BPM)** and time-signature display.
 - **Autosave** to local storage, plus **New / Open / Save** (`.txt` / `.md` / ChordPro).
 - **Export** to Markdown or source `.txt`, or print to PDF (preserves the colored sheet).
-- **Six themes** (dark, light, terminal, sepia, pastel, and an animated rainbow), a
-  **command palette**, chord **autocomplete**, and a **resizable** editor / preview split.
+- **Eight themes** (dark, light, terminal, sepia, pastel, white-on-black, black-on-white,
+  and an animated rainbow), a **command palette**, chord **autocomplete**, and a
+  **resizable** editor / preview split.
 
 ## Quick start
 

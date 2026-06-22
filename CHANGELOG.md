@@ -13,7 +13,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
   apply only to the chords below them; the starting key/tempo are unaffected. Change points
   are marked with a badge in the preview, and transpose shifts every key directive together.
 - **Rainbow theme** — an animated psychedelic theme (flowing toolbar gradient + cycling
-  chart hues), with a `prefers-reduced-motion` fallback. Brings the theme count to six.
+  chart hues), with a `prefers-reduced-motion` fallback.
+- **Monochrome themes** — pure White-on-Black and Black-on-White (no function colors),
+  for minimalist / high-contrast / print use. Theme count is now eight.
 
 ### Fixed
 - Transpose now works for bar lines whose pipes have no surrounding spaces (e.g. `|Bm|D|`);

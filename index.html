@@ -50,6 +50,24 @@
     --fn-chrom: #a98ce4;      --fn-unknown: #b3aacc; --section: #ef93bf;
     --lyric: #5a5478;         --shadow: rgba(180,140,180,.22);
   }
+  [data-theme="mono-dark"] {        /* White on Black — pure monochrome */
+    --bg: #000000;            --bg-2: #000000;       --panel: #0b0b0b;
+    --editor-bg: #000000;     --text: #ffffff;       --muted: #8a8a8a;
+    --line: #2c2c2c;          --accent: #ffffff;     --caret: #ffffff;
+    --sel: #333333;           --header: #000000;
+    --fn-tonic: #ffffff;      --fn-sub: #ffffff;     --fn-dom: #ffffff;
+    --fn-chrom: #ffffff;      --fn-unknown: #8a8a8a; --section: #ffffff;
+    --lyric: #ffffff;         --shadow: rgba(0,0,0,.8);
+  }
+  [data-theme="mono-light"] {       /* Black on White — pure monochrome */
+    --bg: #ffffff;            --bg-2: #ffffff;       --panel: #ffffff;
+    --editor-bg: #ffffff;     --text: #000000;       --muted: #6a6a6a;
+    --line: #d6d6d6;          --accent: #000000;     --caret: #000000;
+    --sel: #d6d6d6;           --header: #ffffff;
+    --fn-tonic: #000000;      --fn-sub: #000000;     --fn-dom: #000000;
+    --fn-chrom: #000000;      --fn-unknown: #6a6a6a; --section: #000000;
+    --lyric: #000000;         --shadow: rgba(0,0,0,.18);
+  }
   [data-theme="psych"] {            /* rainbow / psychedelic — animated (see keyframes below) */
     --bg: #14001f;            --bg-2: #0d0014;       --panel: #1e0a2e;
     --editor-bg: #160620;     --text: #f5e9ff;       --muted: #a98fc0;
@@ -1125,7 +1143,7 @@ document.getElementById('keyPill').onclick = ()=>{
 /* ============================================================
    THEME MENU
    ============================================================ */
-const THEMES = [['dark','Dark'],['light','Light'],['terminal','Terminal'],['sepia','Sepia'],['pastel','Pastel'],['psych','Rainbow ✨']];
+const THEMES = [['dark','Dark'],['light','Light'],['terminal','Terminal'],['sepia','Sepia'],['pastel','Pastel'],['mono-dark','White on Black'],['mono-light','Black on White'],['psych','Rainbow ✨']];
 const themePop = document.getElementById('themePop');
 const themeRoot = document.documentElement;
 function currentTheme(){ return themeRoot.getAttribute('data-theme') || 'dark'; }
@@ -1263,7 +1281,7 @@ const COMMANDS = [
   {name:'Transpose down a whole tone', desc:'-2', run:()=>transposeDoc(-2)},
   {name:'Change key…', desc:'set target key', run:()=>{const v=prompt('Key:',doc.key); if(v) transposeDoc(0,v.trim());}},
   {name:'Set tempo (BPM)…', desc:'add or change BPM', run:()=>setBpm()},
-  {name:'Open theme menu', desc:'6 themes — dark, light, terminal, sepia, pastel, rainbow', run:()=>document.getElementById('themeBtn').click()},
+  {name:'Open theme menu', desc:'8 themes — dark, light, terminal, sepia, pastel, white-on-black, black-on-white, rainbow', run:()=>document.getElementById('themeBtn').click()},
   {name:'Toggle chord notes', desc:'show notes under every chord', run:()=>document.getElementById('notesBtn').click()},
   {name:'New blank song', desc:'clear the editor', run:()=>document.getElementById('newBtn').click()},
   {name:'Open file…', desc:'load a .txt / .md / chordpro', run:()=>document.getElementById('openBtn').click()},
