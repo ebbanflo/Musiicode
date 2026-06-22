@@ -29,10 +29,14 @@ desktop app.
 - **Chord substitutions** — click any chord for tritone subs, relative major/minor,
   same-function diatonic swaps, secondary dominants, borrowed chords, and extensions.
   Picking one rewrites the source.
+- **Next-chord suggestions** — type `>` after a chord to see the most likely next chords
+  with percentages (from a built-in common-harmony model).
 - **Major & minor key analysis** — Roman numerals and harmonic function for both major
   and minor keys (set `key: Am`, `F#m`, …).
+- **Inline key & tempo changes** — write `key:` or `tempo:` again mid-song and it only
+  affects the chords below it; the starting key is untouched.
 - **Key transposition** — semitone steps or jump to any key, with key-aware sharp/flat
-  spelling (slash-chord basses included).
+  spelling (slash-chord basses included); multiple key changes transpose together.
 - **Color coding** by function — tonic, subdominant, dominant, and chromatic/borrowed.
 - **Chord notes + piano diagrams** on hover (and in the substitution menu); a toggle to
   show notes under every chord.
@@ -40,8 +44,8 @@ desktop app.
 - **Tempo (BPM)** and time-signature display.
 - **Autosave** to local storage, plus **New / Open / Save** (`.txt` / `.md` / ChordPro).
 - **Export** to Markdown or source `.txt`, or print to PDF (preserves the colored sheet).
-- **Five themes** (dark, light, terminal, sepia, pastel), a **command palette**, chord
-  **autocomplete**, and a **resizable** editor / preview split.
+- **Six themes** (dark, light, terminal, sepia, pastel, and an animated rainbow), a
+  **command palette**, chord **autocomplete**, and a **resizable** editor / preview split.
 
 ## Quick start
 

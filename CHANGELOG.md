@@ -3,6 +3,22 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.0] — 2026-06-22
+
+### Added
+- **Next-chord suggestions** — type `>` after a chord to get a ranked list of likely next
+  chords with percentages, based on a self-authored common-harmony transition model (major
+  and minor; respects the active key). Not derived from Hooktheory or any proprietary data.
+- **Inline key & tempo changes** — `key:` / `tempo:` directives can appear mid-song and
+  apply only to the chords below them; the starting key/tempo are unaffected. Change points
+  are marked with a badge in the preview, and transpose shifts every key directive together.
+- **Rainbow theme** — an animated psychedelic theme (flowing toolbar gradient + cycling
+  chart hues), with a `prefers-reduced-motion` fallback. Brings the theme count to six.
+
+### Fixed
+- Transpose now works for bar lines whose pipes have no surrounding spaces (e.g. `|Bm|D|`);
+  previously such lines were skipped while lyric/bracket chords still transposed.
+
 ## [0.2.0] — 2026-06-21
 
 ### Added

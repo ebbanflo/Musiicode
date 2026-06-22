@@ -50,6 +50,29 @@
     --fn-chrom: #a98ce4;      --fn-unknown: #b3aacc; --section: #ef93bf;
     --lyric: #5a5478;         --shadow: rgba(180,140,180,.22);
   }
+  [data-theme="psych"] {            /* rainbow / psychedelic — animated (see keyframes below) */
+    --bg: #14001f;            --bg-2: #0d0014;       --panel: #1e0a2e;
+    --editor-bg: #160620;     --text: #f5e9ff;       --muted: #a98fc0;
+    --line: #3a1d52;          --accent: #ff4ff0;     --caret: #ffe14d;
+    --sel: #45206b;           --header: #0c0014;
+    --fn-tonic: #4dff88;      --fn-sub: #4dd6ff;     --fn-dom: #ff5d8f;
+    --fn-chrom: #c77dff;      --fn-unknown: #a98fc0; --section: #ffd24d;
+    --lyric: #ecd9ff;         --shadow: rgba(0,0,0,.5);
+  }
+  /* psychedelic animations: flowing toolbar gradient + cycling chart hues */
+  @keyframes psychHue { from { filter: hue-rotate(0deg); } to { filter: hue-rotate(360deg); } }
+  @keyframes psychFlow { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+  [data-theme="psych"] .topbar {
+    background: linear-gradient(120deg,#3a0ca3,#7209b7,#f72585,#4361ee,#4cc9f0,#3a0ca3);
+    background-size: 300% 300%; animation: psychFlow 16s ease infinite;
+  }
+  [data-theme="psych"] .preview-scroll { animation: psychHue 12s linear infinite; }
+  [data-theme="psych"] .brand { animation: psychHue 5s linear infinite; }
+  [data-theme="psych"] .doc-title { animation: psychHue 7s linear infinite; }
+  @media (prefers-reduced-motion: reduce) {
+    [data-theme="psych"] .topbar, [data-theme="psych"] .preview-scroll,
+    [data-theme="psych"] .brand, [data-theme="psych"] .doc-title { animation: none; }
+  }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
   body {
@@ -119,6 +142,11 @@
   .doc-meta span b { color: var(--accent); }
   .section-h { color: var(--section); font-weight: 700; font-size: 13px;
     text-transform: uppercase; letter-spacing: 1.5px; margin: 24px 0 10px; }
+  .change-badge { display: inline-block; margin: 10px 0 4px; padding: 3px 10px;
+    border-radius: 999px; font-size: 12px; border: 1px dashed var(--line); }
+  .change-badge b { font-family: ui-monospace, Menlo, monospace; }
+  .change-badge.key { color: var(--accent); border-color: var(--accent); }
+  .change-badge.bpm { color: var(--section); border-color: var(--section); }
 
   /* bars */
   .bar-row { display: flex; flex-wrap: wrap; gap: 0; margin: 8px 0; }
@@ -223,6 +251,9 @@
   .ac .ai { padding: 5px 9px; border-radius: 6px; cursor: pointer; display:flex; justify-content:space-between; gap:14px; }
   .ac .ai.active { background: var(--sel); }
   .ac .ai .hint { color: var(--muted); font-size: 11px; }
+  .ac .ai-head { padding: 4px 9px 5px; font-size: 10px; text-transform: uppercase;
+    letter-spacing: .8px; color: var(--accent); border-bottom: 1px solid var(--line);
+    margin-bottom: 3px; font-family: ui-sans-serif, system-ui, sans-serif; }
   .mirror { position: absolute; visibility: hidden; white-space: pre-wrap; word-wrap: break-word;
     top: 0; left: 0; pointer-events: none; }
 
@@ -377,6 +408,52 @@ const MINOR_STEPS = [0,2,3,5,7,8,10];
 const MINOR_QUAL  = ['m','dim','','m','m','','']; // i ii° III iv v VI VII
 const RN_BASE_MIN = ['i','ii','III','iv','v','VI','VII'];
 const NUMERALS    = ['I','II','III','IV','V','VI','VII'];
+
+/* next-chord transition tendencies (self-authored from common functional harmony,
+   NOT Hooktheory data). rows index by scale degree 0=I..6=vii; values [toDegree, weight]. */
+const MAJOR_TRANS = {
+  0: [[3,22],[4,22],[5,20],[1,16],[2,8],[0,7],[6,5]],   // I
+  1: [[4,50],[6,12],[3,12],[0,10],[5,8],[1,8]],          // ii
+  2: [[5,38],[3,26],[0,14],[1,12],[4,10]],               // iii
+  3: [[4,34],[0,26],[1,16],[5,12],[2,6],[6,6]],          // IV
+  4: [[0,52],[5,22],[3,12],[1,8],[2,6]],                 // V
+  5: [[3,30],[1,24],[4,18],[0,14],[2,8],[6,6]],          // vi
+  6: [[0,60],[2,20],[5,12],[4,8]]                        // vii°
+};
+const MINOR_TRANS = {
+  0: [[5,24],[3,22],[6,18],[4,16],[2,12],[0,8]],         // i
+  1: [[4,55],[0,20],[6,15],[3,10]],                      // ii°
+  2: [[5,34],[6,26],[3,18],[0,12],[4,10]],               // III
+  3: [[0,34],[4,24],[6,16],[5,14],[2,12]],               // iv
+  4: [[0,50],[5,22],[6,16],[3,12]],                      // v / V
+  5: [[3,28],[6,24],[2,20],[0,16],[4,12]],               // VI
+  6: [[2,40],[0,24],[5,20],[3,16]]                       // VII
+};
+/* given the previous chord symbol and key context, rank likely next chords */
+function nextChordSuggestions(prevSym, ctx){
+  const steps = ctx.minor ? MINOR_STEPS : MAJOR_STEPS;
+  const table = ctx.minor ? MINOR_TRANS : MAJOR_TRANS;
+  const rnames = ctx.minor ? RN_BASE_MIN : RN_BASE;
+  let fromIdx = null;
+  if(prevSym){ const c = parseChord(prevSym); if(c.valid){ fromIdx = steps.indexOf(((c.root-ctx.keyPc)+12)%12); } }
+  const rows = (fromIdx!=null && fromIdx>=0) ? table[fromIdx] : [[0,55],[5,25],[3,20]]; // openers if none
+  const total = rows.reduce((s,r)=>s+r[1],0);
+  return rows.map(([toIdx,w])=>({
+      sym: diatonicChord(ctx.keyPc, toIdx, ctx.useFlats, ctx.minor),
+      rn: rnames[toIdx],
+      pct: Math.round(w/total*100)
+    })).sort((a,b)=>b.pct-a.pct).slice(0,6);
+}
+/* key in effect at a given source line (scans key: directives above it) */
+function activeKeyAt(text, lineIdx){
+  let kp=0, min=false, fl=keyUsesFlats('C');
+  const ls = text.split('\n');
+  for(let i=0;i<=lineIdx && i<ls.length;i++){
+    const d = /^\s*key\s*:\s*(.+)$/i.exec(ls[i]);
+    if(d){ const pk=parseKey(d[1].trim()); kp=pk.pc ?? 0; min=pk.minor; fl=keyUsesFlats(d[1].trim()); }
+  }
+  return { keyPc:kp, minor:min, useFlats:fl };
+}
 
 function diatonicChord(keyPc, degIndex, useFlats, minor){
   const steps = minor ? MINOR_STEPS : MAJOR_STEPS;
@@ -602,44 +679,53 @@ function getSubstitutions(chord, keyPc, useFlats, minor){
    ============================================================ */
 function parseDoc(text){
   const lines = text.split('\n');
-  const doc = { title:'', key:'C', time:'4/4', bpm:'', keyPc:0, useFlats:false, blocks:[] };
+  const doc = { title:'', key:'C', time:'4/4', bpm:'', keyPc:0, minor:false, useFlats:false, blocks:[] };
+  // running state — key/tempo apply from where they appear downward
+  let curKey='C', curKeyPc=0, curMinor=false, curFlats=false, curBpm='';
+  let seenKey=false, seenBpm=false, seenTitle=false, seenTime=false;
+  const ctx = ()=>({ keyPc:curKeyPc, minor:curMinor, useFlats:curFlats });
   lines.forEach((raw, li)=>{
     const line = raw.replace(/\s+$/,'');
     const dir = /^\s*(title|key|time|bpm|tempo)\s*:\s*(.+)$/i.exec(line);
     if(dir){
       const k = dir[1].toLowerCase(), v = dir[2].trim();
-      if(k==='title') doc.title=v;
-      if(k==='key'){ doc.key=v; }
-      if(k==='time') doc.time=v;
-      if(k==='bpm' || k==='tempo') doc.bpm = v.replace(/[^\d.]/g,'');
-      doc.blocks.push({type:'directive', line:li});
+      let dkind=k, isChange=false, display=v;
+      if(k==='title'){ if(!seenTitle){ doc.title=v; seenTitle=true; } }
+      else if(k==='time'){ if(!seenTime){ doc.time=v; seenTime=true; } }
+      else if(k==='key'){
+        const pk = parseKey(v);
+        curKey=v; curKeyPc=pk.pc ?? 0; curMinor=pk.minor; curFlats=keyUsesFlats(v);
+        if(!seenKey){ doc.key=v; doc.keyPc=curKeyPc; doc.minor=curMinor; doc.useFlats=curFlats; seenKey=true; }
+        else isChange=true;
+      }
+      else { // bpm / tempo
+        const val = v.replace(/[^\d.]/g,''); curBpm=val; display=val; dkind='bpm';
+        if(!seenBpm){ doc.bpm=val; seenBpm=true; } else isChange=true;
+      }
+      doc.blocks.push({type:'directive', line:li, dkind, value:display, isChange, ...ctx()});
       return;
     }
     if(/^\s*#/.test(line)){
-      doc.blocks.push({type:'section', text: line.replace(/^\s*#+\s*/,''), line:li});
+      doc.blocks.push({type:'section', text: line.replace(/^\s*#+\s*/,''), line:li, ...ctx()});
       return;
     }
-    if(line.trim()===''){ doc.blocks.push({type:'blank', line:li}); return; }
+    if(line.trim()===''){ doc.blocks.push({type:'blank', line:li, ...ctx()}); return; }
     if(line.includes('[') && /\[[^\]]+\]/.test(line)){
-      doc.blocks.push({type:'lyric', segs: tokenizeLyric(line, li), line:li});
+      doc.blocks.push({type:'lyric', segs: tokenizeLyric(line, li), line:li, ...ctx()});
       return;
     }
     if(line.includes('|')){
-      doc.blocks.push({type:'bars', bars: tokenizeBars(line, li), line:li});
+      doc.blocks.push({type:'bars', bars: tokenizeBars(line, li), line:li, ...ctx()});
       return;
     }
     // line of bare chord tokens?
     const toks = line.trim().split(/\s+/);
     if(toks.length && toks.every(t=>parseChord(t).valid)){
-      doc.blocks.push({type:'bars', bars:[{ chords: tokenizeBarChords(line, li, 0) }], line:li});
+      doc.blocks.push({type:'bars', bars:[{ chords: tokenizeBarChords(line, li, 0) }], line:li, ...ctx()});
       return;
     }
-    doc.blocks.push({type:'plain', text:line, line:li});
+    doc.blocks.push({type:'plain', text:line, line:li, ...ctx()});
   });
-  const k = parseKey(doc.key);
-  doc.keyPc = k.pc ?? 0;
-  doc.minor = k.minor;
-  doc.useFlats = keyUsesFlats(doc.key);
   return doc;
 }
 
@@ -703,9 +789,11 @@ function tokenizeLyric(line, li){
    ============================================================ */
 const previewEl = document.getElementById('preview');
 let _lintCount = 0;
-function chipHtml(tok, doc){
+function chipHtml(tok, ctx){
   const c = tok.chord;
-  const dataAttrs = `data-line="${tok.line}" data-start="${tok.start}" data-end="${tok.end}" data-sym="${escapeAttr(tok.sym)}"`;
+  // embed the key in effect at this chord so the substitution menu uses the right key
+  const keyAttrs = `data-kpc="${ctx.keyPc}" data-kmin="${ctx.minor?1:0}" data-flats="${ctx.useFlats?1:0}"`;
+  const dataAttrs = `data-line="${tok.line}" data-start="${tok.start}" data-end="${tok.end}" data-sym="${escapeAttr(tok.sym)}" ${keyAttrs}`;
   if(!c.valid){
     if(/^[A-Ga-g]/.test(tok.sym)){           // chord-like but unrecognized -> lint it
       _lintCount++;
@@ -714,7 +802,7 @@ function chipHtml(tok, doc){
     }
     return `<span class="chip lbl" ${dataAttrs} data-notes=""><span class="sym">${escapeHtml(tok.sym)}</span></span>`;
   }
-  const a = analyze(c, doc.keyPc, doc.minor);
+  const a = analyze(c, ctx.keyPc, ctx.minor);
   const notes = getChordNotes(c).join(' ');
   const notesLine = showNotes ? `<span class="notes">${escapeHtml(notes)}</span>` : '';
   return `<span class="chip fn-${a.fn}" ${dataAttrs} data-notes="${escapeAttr(notes)}">`
@@ -729,7 +817,14 @@ function render(doc){
         + (doc.bpm ? `<span>♩ = <b>${escapeHtml(doc.bpm)}</b></span>` : '')
         + `</div>`;
   doc.blocks.forEach(b=>{
-    if(b.type==='section') html += `<div class="section-h">${escapeHtml(b.text)}</div>`;
+    const ctx = { keyPc:b.keyPc, minor:b.minor, useFlats:b.useFlats };
+    if(b.type==='directive'){
+      if(b.isChange && b.dkind==='key')
+        html += `<div class="change-badge key">→ Key <b>${escapeHtml(b.value)}</b></div>`;
+      else if(b.isChange && b.dkind==='bpm')
+        html += `<div class="change-badge bpm">→ ♩ = <b>${escapeHtml(b.value)}</b></div>`;
+    }
+    else if(b.type==='section') html += `<div class="section-h">${escapeHtml(b.text)}</div>`;
     else if(b.type==='bars'){
       html += `<div class="bar-row">`;
       b.bars.forEach(bar=>{
@@ -737,7 +832,7 @@ function render(doc){
         if(bar.chords.length===0) html += `<span style="color:var(--muted)">·</span>`;
         bar.chords.forEach(ch=> html += ch.kind==='text'
           ? `<span class="bar-txt">${escapeHtml(ch.sym)}</span>`
-          : chipHtml(ch, doc));
+          : chipHtml(ch, ctx));
         html += `</div>`;
       });
       html += `</div>`;
@@ -746,7 +841,7 @@ function render(doc){
       html += `<div class="lyric-line">`;
       b.segs.forEach(seg=>{
         if(seg.chord){
-          html += `<span class="lyseg">${chipHtml(seg.chord, doc)}<span class="ly">${escapeHtml(seg.ly)}</span></span>`;
+          html += `<span class="lyseg">${chipHtml(seg.chord, ctx)}<span class="ly">${escapeHtml(seg.ly)}</span></span>`;
         } else {
           html += `<span class="lyseg nochord"><span class="ly">${escapeHtml(seg.ly)}</span></span>`;
         }
@@ -920,7 +1015,11 @@ function openSubMenu(chip){
   const line=+chip.dataset.line, start=+chip.dataset.start, end=+chip.dataset.end;
   const sym = chip.dataset.sym;
   const c = parseChord(sym);
-  const subs = getSubstitutions(c, doc.keyPc, doc.useFlats, doc.minor);
+  // use the key in effect at this chord (supports mid-song key changes)
+  const kPc = chip.dataset.kpc!=null ? +chip.dataset.kpc : doc.keyPc;
+  const kMin = chip.dataset.kmin!=null ? chip.dataset.kmin==='1' : doc.minor;
+  const kFlats = chip.dataset.flats!=null ? chip.dataset.flats==='1' : doc.useFlats;
+  const subs = getSubstitutions(c, kPc, kFlats, kMin);
   const notes = getChordNotes(c).join(' ');
   let html = `<div class="pop-h">Substitute &nbsp;<b>${escapeHtml(sym)}</b></div>`;
   html += `<div class="opt" style="cursor:default"><span class="o-lbl">notes</span><span class="o-sym" style="color:var(--accent)">${escapeHtml(notes)}</span></div>`;
@@ -982,8 +1081,13 @@ function transposeDoc(interval, targetKeyName){
   }
   const out = lines.map(raw=>{
     const dir = /^(\s*key\s*:\s*)(.+)$/i.exec(raw);
-    if(dir) return dir[1]+newKeyName;
-    if(/^\s*(title|time)\s*:/i.test(raw)) return raw;
+    if(dir){
+      // transpose EACH key directive by the same interval (preserves mid-song key changes)
+      const pk = parseKey(dir[2]);
+      const np = ((pk.pc + interval)%12+12)%12;
+      return dir[1] + pcToName(np, useFlats) + (pk.minor ? 'm' : '');
+    }
+    if(/^\s*(title|time|bpm|tempo)\s*:/i.test(raw)) return raw;
     if(/^\s*#/.test(raw)) return raw;
     return transposeLine(raw, interval, useFlats);
   });
@@ -1001,7 +1105,8 @@ function transposeLine(line, interval, useFlats){
     return line.replace(/\[([^\]]+)\]/g,(_,s)=>'['+transposeSymbol(s,interval,useFlats)+']');
   }
   if(line.includes('|') || isBareChordLine(line)){
-    return line.replace(/\S+/g, t=> t==='|' ? t : (parseChord(t).valid ? transposeSymbol(t,interval,useFlats) : t));
+    // match chord tokens by note-letter, ignoring bar lines / spacing (handles "|Bm|D|" with no spaces)
+    return line.replace(/[A-Ga-g][^\s|]*/g, t=> parseChord(t).valid ? transposeSymbol(t,interval,useFlats) : t);
   }
   return line;
 }
@@ -1020,7 +1125,7 @@ document.getElementById('keyPill').onclick = ()=>{
 /* ============================================================
    THEME MENU
    ============================================================ */
-const THEMES = [['dark','Dark'],['light','Light'],['terminal','Terminal'],['sepia','Sepia'],['pastel','Pastel']];
+const THEMES = [['dark','Dark'],['light','Light'],['terminal','Terminal'],['sepia','Sepia'],['pastel','Pastel'],['psych','Rainbow ✨']];
 const themePop = document.getElementById('themePop');
 const themeRoot = document.documentElement;
 function currentTheme(){ return themeRoot.getAttribute('data-theme') || 'dark'; }
@@ -1158,7 +1263,7 @@ const COMMANDS = [
   {name:'Transpose down a whole tone', desc:'-2', run:()=>transposeDoc(-2)},
   {name:'Change key…', desc:'set target key', run:()=>{const v=prompt('Key:',doc.key); if(v) transposeDoc(0,v.trim());}},
   {name:'Set tempo (BPM)…', desc:'add or change BPM', run:()=>setBpm()},
-  {name:'Open theme menu', desc:'dark · light · terminal · sepia · pastel', run:()=>document.getElementById('themeBtn').click()},
+  {name:'Open theme menu', desc:'6 themes — dark, light, terminal, sepia, pastel, rainbow', run:()=>document.getElementById('themeBtn').click()},
   {name:'Toggle chord notes', desc:'show notes under every chord', run:()=>document.getElementById('notesBtn').click()},
   {name:'New blank song', desc:'clear the editor', run:()=>document.getElementById('newBtn').click()},
   {name:'Open file…', desc:'load a .txt / .md / chordpro', run:()=>document.getElementById('openBtn').click()},
@@ -1207,18 +1312,34 @@ function insertAtCaret(t){
    ============================================================ */
 const acEl=document.getElementById('ac'), mirror=document.getElementById('mirror');
 const QUALITIES=['','maj7','m','m7','7','m7b5','dim7','sus4','sus2','6','9','add9','13','m9','maj9'];
-let acItems=[], acActive=0, acWordStart=0;
+let acItems=[], acActive=0, acWordStart=0, acMode='chord', acTitle='';
 function maybeAutocomplete(){
   const pos=srcEl.selectionStart;
   const upto=srcEl.value.slice(0,pos);
   const lineStart=upto.lastIndexOf('\n')+1;
-  const wordMatch=/([A-Ga-g][#b]?[A-Za-z0-9]*)$/.exec(upto);
-  // don't autocomplete inside directive/section lines
   const curLine=upto.slice(lineStart);
   if(/^\s*(title|key|time|bpm|tempo)\s*:/i.test(curLine) || /^\s*#/.test(curLine)){ hideAc(); return; }
+
+  // ">" operator: suggest the next chord based on the preceding chord + active key
+  if(upto[pos-1]==='>'){
+    const seg = upto.slice(lineStart, pos-1);
+    const pm = /(?:\[([^\]]+)\]|([A-Ga-g][^\s|>\]]*))\s*$/.exec(seg);
+    const prevSym = pm ? (pm[1]||pm[2]) : null;
+    const lineIdx = (upto.match(/\n/g)||[]).length;
+    const ctx = activeKeyAt(srcEl.value, lineIdx);
+    const sug = nextChordSuggestions(prevSym, ctx);
+    if(!sug.length){ hideAc(); return; }
+    acMode='suggest'; acWordStart=pos-1;          // replace the ">"
+    acTitle = prevSym ? `After ${prevSym} →` : 'Likely start →';
+    acItems = sug.map(s=>({sym:s.sym, q:`${s.rn} · ${s.pct}%`}));
+    acActive=0; renderAc(); positionAc(pos);
+    return;
+  }
+
+  const wordMatch=/([A-Ga-g][#b]?[A-Za-z0-9]*)$/.exec(upto);
   if(!wordMatch){ hideAc(); return; }
   const word=wordMatch[1];
-  acWordStart=pos-word.length;
+  acMode='chord'; acTitle=''; acWordStart=pos-word.length;
   const rootM=/^([A-Ga-g][#b]?)(.*)$/.exec(word);
   if(!rootM){ hideAc(); return; }
   const root=rootM[1].charAt(0).toUpperCase()+rootM[1].slice(1), tail=rootM[2];
@@ -1227,7 +1348,8 @@ function maybeAutocomplete(){
   acActive=0; renderAc(); positionAc(pos);
 }
 function renderAc(){
-  acEl.innerHTML=acItems.map((it,i)=>`<div class="ai ${i===acActive?'active':''}" data-i="${i}"><span>${escapeHtml(it.sym)}</span><span class="hint">${escapeHtml(it.q)}</span></div>`).join('');
+  const head = acTitle ? `<div class="ai-head">${escapeHtml(acTitle)}</div>` : '';
+  acEl.innerHTML=head+acItems.map((it,i)=>`<div class="ai ${i===acActive?'active':''}" data-i="${i}"><span>${escapeHtml(it.sym)}</span><span class="hint">${escapeHtml(it.q)}</span></div>`).join('');
   acEl.querySelectorAll('.ai').forEach(el=>el.onmousedown=ev=>{ ev.preventDefault(); acceptAc(+el.dataset.i); });
   acEl.classList.add('show');
 }
@@ -1250,8 +1372,13 @@ function hideAc(){ acEl.classList.remove('show'); acItems=[]; }
 function acceptAc(i){
   const it=acItems[i]; if(!it) return;
   const pos=srcEl.selectionStart;
-  srcEl.value=srcEl.value.slice(0,acWordStart)+it.sym+srcEl.value.slice(pos);
-  const np=acWordStart+it.sym.length;
+  let insert=it.sym;
+  if(acMode==='suggest'){           // replace the ">"; add a leading space if glued to a chord
+    const before=srcEl.value[acWordStart-1];
+    if(before && !/[\s|]/.test(before)) insert=' '+insert;
+  }
+  srcEl.value=srcEl.value.slice(0,acWordStart)+insert+srcEl.value.slice(pos);
+  const np=acWordStart+insert.length;
   srcEl.selectionStart=srcEl.selectionEnd=np;
   hideAc(); refresh(); srcEl.focus();
 }
@@ -1279,6 +1406,10 @@ Directives (top of file):
   time: 4/4
   bpm: 120        (optional tempo — or click the ♩ pill)
 
+Key / tempo changes:
+  Write key: or tempo: again mid-song — it only affects
+  the chords BELOW it; the starting key stays as-is.
+
 Section header:
   # Verse
 
@@ -1287,6 +1418,11 @@ Barred chords (use | as bar lines):
 
 Chords over lyrics (inline brackets):
   [C]Twinkle [G]twinkle [Am]little [F]star
+
+Next-chord suggestions:
+  Type > after a chord to see likely next chords with
+  percentages (e.g. "| C > ") — pick one to insert it.
+  (Likelihoods come from common harmony, not Hooktheory.)
 
 INTERACT
   • Hover any chord → notes + a piano diagram of the shape
@@ -1309,7 +1445,7 @@ function toast(msg){
 }
 
 /* expose engine for testing */
-window.MUSIICODE = { parseChord, analyze, transposeSymbol, getSubstitutions, getChordNotes, getChordTones, pianoSVG, parseDoc, noteToPc, pcToName, diatonicChord };
+window.MUSIICODE = { parseChord, analyze, transposeSymbol, getSubstitutions, getChordNotes, getChordTones, pianoSVG, parseDoc, noteToPc, pcToName, diatonicChord, nextChordSuggestions, activeKeyAt };
 </script>
 </body>
 </html>
