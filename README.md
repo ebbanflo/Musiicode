@@ -31,6 +31,13 @@ desktop app.
   Picking one rewrites the source.
 - **Next-chord suggestions** — type `>` after a chord to see the most likely next chords
   with percentages (from a built-in common-harmony model).
+- **Roman-numeral input** — write `| I | V | vi | IV |` and it renders real chords in the
+  current key (transpose-proof); supports qualities/accidentals (`V7`, `ii`, `vii°`, `bVII`).
+  Convert a whole song between chords and numerals either direction.
+- **Named progressions** — `verse = | I | V | vi | IV |`, then reuse anywhere with `@verse`.
+- **Reharmonize operator** — append `~` to a chord line to add diatonic 7ths (`~simple`
+  strips to triads, `~tritone` swaps dominants); live and non-destructive, or bake it in.
+- **Comments** — `//` whole-line or trailing notes that never render.
 - **Major & minor key analysis** — Roman numerals and harmonic function for both major
   and minor keys (set `key: Am`, `F#m`, …).
 - **Inline key & tempo changes** — write `key:` or `tempo:` again mid-song and it only
@@ -50,8 +57,10 @@ desktop app.
 
 ## Quick start
 
-Open `index.html` in any modern browser. That's it. Press <kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd>
-for the command palette, or click **syntax help** in the editor header.
+Open `index.html` in any modern browser. That's it. The app opens on a **demo song whose
+lyrics explain every feature** — or load it anytime from the command palette
+(<kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd> → "Load demo song"). Click **syntax help** in the editor
+header for the full reference. (Tip: tap `\` to drop a `|` bar line without Shift.)
 
 ## Syntax
 

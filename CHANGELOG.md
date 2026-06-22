@@ -3,6 +3,25 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.0] — 2026-06-22
+
+### Added
+- **Roman-numeral input** — write progressions as `| I | V | vi | IV |` and they render as
+  real chords in the active key (transpose-proof). Supports qualities and accidentals
+  (`V7`, `ii`, `vii°`, `bVII`, `IVmaj7`), works in major and minor, and inside lyric
+  brackets. Accidental numerals spell by their accidental (`bVII` → Bb).
+- **Convert chords ⇄ Roman numerals** — two commands to flip a whole song either direction
+  (key-independent numerals ↔ spelled-out chords); respects mid-song key changes.
+- **Named progressions** — define `name = | ... |` and reuse anywhere with `@name`;
+  references resolve to the definition.
+- **Reharmonize operator `~`** — append to a chord line to add diatonic 7ths (`~`/`~jazz`),
+  strip to triads (`~simple`), or tritone-sub dominants (`~tritone`). Live and
+  non-destructive, plus an **Apply reharmonization** command to bake it into the source.
+- **Comments** — `//` whole-line and trailing annotations that never render or export.
+- **`\` → `|`** — typing a backslash inserts a bar line (no Shift needed).
+- **Demo song** — the default document is now a feature showcase whose lyrics explain each
+  capability; loadable anytime via the command palette.
+
 ## [0.3.0] — 2026-06-22
 
 ### Added

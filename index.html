@@ -165,6 +165,11 @@
   .change-badge b { font-family: ui-monospace, Menlo, monospace; }
   .change-badge.key { color: var(--accent); border-color: var(--accent); }
   .change-badge.bpm { color: var(--section); border-color: var(--section); }
+  .named-label { color: var(--accent); font-weight: 700; font-size: 11px; letter-spacing: 1px;
+    text-transform: uppercase; margin: 14px 0 4px; font-family: ui-monospace, Menlo, monospace; }
+  .named-missing { color: var(--fn-dom); font-size: 12px; font-style: italic; margin: 2px 0; }
+  .reharm-tag { display: inline-block; color: var(--section); font-size: 10px;
+    font-family: ui-monospace, Menlo, monospace; margin-top: 3px; opacity: .8; }
 
   /* bars */
   .bar-row { display: flex; flex-wrap: wrap; gap: 0; margin: 8px 0; }
@@ -473,6 +478,64 @@ function activeKeyAt(text, lineIdx){
   return { keyPc:kp, minor:min, useFlats:fl };
 }
 
+/* ---- Roman-numeral input: "V7", "ii", "bVII", "vii°" -> real chord in the key ---- */
+const ROMAN_DEG = { i:1, ii:2, iii:3, iv:4, v:5, vi:6, vii:7 };
+function romanToChord(tok, ctx){
+  const m = /^([b#]?)([ivIV]+)(.*)$/.exec(tok);
+  if(!m) return null;
+  const numLower = m[2].toLowerCase();
+  if(!(numLower in ROMAN_DEG)) return null;
+  const rest = m[3];
+  const restClean = rest.replace(/[()\s]/g,'');
+  const okRest = restClean==='' || /^(°|o(?![a-z])|ø|\+)/.test(restClean) || QUALITY_RE.test(restClean);
+  if(!okRest) return null;
+  const deg = ROMAN_DEG[numLower];
+  const upper = m[2] === m[2].toUpperCase();
+  const acc = m[1];
+  const steps = ctx.minor ? MINOR_STEPS : MAJOR_STEPS;
+  const semi = steps[deg-1] + (acc==='b'?-1 : acc==='#'?1 : 0);
+  const spell = acc==='b' ? true : acc==='#' ? false : ctx.useFlats;  // bVII -> Bb, #IV -> F#
+  const root = pcToName((((ctx.keyPc + semi)%12)+12)%12, spell);
+  let qual;
+  if(/^(°|o(?![a-z]))/.test(rest)) qual = 'dim' + rest.replace(/^(°|o)/,'');
+  else if(/^ø/.test(rest)) qual = 'm7b5' + rest.slice(1);
+  else qual = (upper?'':'m') + rest;
+  return root + qual;
+}
+/* resolve a token to a chord symbol: literal chord OR roman numeral, else null */
+function resolveChordToken(tok, ctx){
+  if(parseChord(tok).valid) return tok;
+  return romanToChord(tok, ctx);
+}
+
+/* ---- reharmonize: live transform of a chord (jazz / simple / tritone) ---- */
+const DIA7_MAJ = ['maj7','m7','m7','maj7','7','m7','m7b5'];
+const DIA7_MIN = ['m7','m7b5','maj7','m7','m7','maj7','7'];
+function parseReharm(s){
+  s = (s||'').toLowerCase();
+  if(s.startsWith('simp')) return 'simple';
+  if(s.startsWith('tri')) return 'tritone';
+  return 'jazz';
+}
+function reharmonizeSym(sym, ctx, mode){
+  const c = parseChord(sym);
+  if(!c.valid) return sym;
+  const bass = c.bass!=null ? '/'+c.bass : '';
+  if(mode==='simple'){
+    let q = c.info.halfDim||c.info.dim ? 'dim' : c.info.aug ? 'aug' : c.info.triad==='minor' ? 'm' : '';
+    return c.rootName + q + bass;
+  }
+  if(mode==='tritone'){
+    return c.info.dominant ? pcToName((c.root+6)%12, ctx.useFlats)+'7'+bass : sym;
+  }
+  // jazz: add a diatonic 7th if the chord has no extension yet
+  if(/(6|7|9|11|13)/.test(c.quality)) return sym;
+  const deg = (ctx.minor?MINOR_STEPS:MAJOR_STEPS).indexOf(((c.root-ctx.keyPc)+12)%12);
+  if(deg>=0) return c.rootName + (ctx.minor?DIA7_MIN:DIA7_MAJ)[deg] + bass;
+  const q = c.info.triad==='minor' ? 'm7' : c.info.dim ? 'm7b5' : 'maj7';
+  return c.rootName + q + bass;
+}
+
 function diatonicChord(keyPc, degIndex, useFlats, minor){
   const steps = minor ? MINOR_STEPS : MAJOR_STEPS;
   const qual  = minor ? MINOR_QUAL  : MAJOR_QUAL;
@@ -698,12 +761,27 @@ function getSubstitutions(chord, keyPc, useFlats, minor){
 function parseDoc(text){
   const lines = text.split('\n');
   const doc = { title:'', key:'C', time:'4/4', bpm:'', keyPc:0, minor:false, useFlats:false, blocks:[] };
+  // pre-pass: collect named-progression definitions ("name = | ... |")
+  const defs = {};
+  lines.forEach((l,i)=>{
+    const dm = /^(\s*([A-Za-z][\w-]*)\s*=\s*)(.+)$/.exec(l);
+    if(dm && dm[3].includes('|')) defs[dm[2].toLowerCase()] = { value:dm[3].replace(/\s+$/,''), line:i, offset:dm[1].length };
+  });
   // running state — key/tempo apply from where they appear downward
   let curKey='C', curKeyPc=0, curMinor=false, curFlats=false, curBpm='';
   let seenKey=false, seenBpm=false, seenTitle=false, seenTime=false;
   const ctx = ()=>({ keyPc:curKeyPc, minor:curMinor, useFlats:curFlats });
+  const isChordLine = s=>{ const t=s.trim().split(/\s+/).filter(Boolean); return t.length>0 && t.every(x=>!!resolveChordToken(x, ctx())); };
   lines.forEach((raw, li)=>{
-    const line = raw.replace(/\s+$/,'');
+    const line0 = raw.replace(/\s+$/,'');
+    // full-line comment
+    if(/^\s*\/\//.test(line0)){ doc.blocks.push({type:'comment', text:line0, line:li, ...ctx()}); return; }
+    // strip trailing inline comment ( // ... )
+    let line = line0;
+    const cm = line.match(/\s+\/\/.*$/);
+    if(cm) line = line.slice(0, cm.index).replace(/\s+$/,'');
+    if(line.trim()===''){ doc.blocks.push({type:'blank', line:li, ...ctx()}); return; }
+
     const dir = /^\s*(title|key|time|bpm|tempo)\s*:\s*(.+)$/i.exec(line);
     if(dir){
       const k = dir[1].toLowerCase(), v = dir[2].trim();
@@ -727,19 +805,38 @@ function parseDoc(text){
       doc.blocks.push({type:'section', text: line.replace(/^\s*#+\s*/,''), line:li, ...ctx()});
       return;
     }
-    if(line.trim()===''){ doc.blocks.push({type:'blank', line:li, ...ctx()}); return; }
+    // named-progression definition:  name = | ... |
+    const defm = /^(\s*([A-Za-z][\w-]*)\s*=\s*)(.+)$/.exec(line);
+    if(defm && defm[3].includes('|')){
+      doc.blocks.push({type:'named', name:defm[2], bars: tokenizeBars(defm[3], li, ctx(), null, defm[1].length), line:li, ...ctx()});
+      return;
+    }
+    // reference:  @name
+    const refm = /^\s*@([A-Za-z][\w-]*)\s*$/.exec(line);
+    if(refm){
+      const d = defs[refm[1].toLowerCase()];
+      doc.blocks.push(d
+        ? {type:'named', name:refm[1], ref:true, bars: tokenizeBars(d.value, d.line, ctx(), null, d.offset), line:li, ...ctx()}
+        : {type:'named', name:refm[1], ref:true, missing:true, line:li, ...ctx()});
+      return;
+    }
     if(line.includes('[') && /\[[^\]]+\]/.test(line)){
-      doc.blocks.push({type:'lyric', segs: tokenizeLyric(line, li), line:li, ...ctx()});
+      doc.blocks.push({type:'lyric', segs: tokenizeLyric(line, li, ctx(), null), line:li, ...ctx()});
       return;
     }
-    if(line.includes('|')){
-      doc.blocks.push({type:'bars', bars: tokenizeBars(line, li), line:li, ...ctx()});
+    // optional reharmonize operator (~jazz / ~simple / ~tritone) on a chord line
+    let reharm=null, body=line;
+    const rhm = /\s*~(\w*)\s*$/.exec(line);
+    if(rhm){
+      const cand = line.slice(0, rhm.index);
+      if(cand.includes('|') || isChordLine(cand)){ reharm = parseReharm(rhm[1]); body = cand.replace(/\s+$/,''); }
+    }
+    if(body.includes('|')){
+      doc.blocks.push({type:'bars', bars: tokenizeBars(body, li, ctx(), reharm, 0), reharm, line:li, ...ctx()});
       return;
     }
-    // line of bare chord tokens?
-    const toks = line.trim().split(/\s+/);
-    if(toks.length && toks.every(t=>parseChord(t).valid)){
-      doc.blocks.push({type:'bars', bars:[{ chords: tokenizeBarChords(line, li, 0) }], line:li, ...ctx()});
+    if(isChordLine(body)){
+      doc.blocks.push({type:'bars', bars:[{ chords: tokenizeBarChords(body, li, 0, ctx(), reharm) }], reharm, line:li, ...ctx()});
       return;
     }
     doc.blocks.push({type:'plain', text:line, line:li, ...ctx()});
@@ -747,41 +844,45 @@ function parseDoc(text){
   return doc;
 }
 
-function tokenizeBarChords(text, li, offset){
+function tokenizeBarChords(text, li, offset, ctx, reharm){
   const chords=[]; const re=/\S+/g; let m;
   while((m=re.exec(text))){
     if(m[0]==='|') continue;
-    const c = parseChord(m[0]);
-    const base = { sym:m[0], start:offset+m.index, end:offset+m.index+m[0].length, line:li, chord:c };
-    if(c.valid) chords.push({ ...base, kind:'chord' });
-    else if(/^[A-Ga-g]/.test(m[0])) chords.push({ ...base, kind:'error' });  // looks like a chord, failed to parse
-    else chords.push({ ...base, kind:'text' });                              // N.C., %, /, etc.
+    const raw=m[0], start=offset+m.index, end=start+raw.length;
+    const resolved = ctx ? resolveChordToken(raw, ctx) : (parseChord(raw).valid ? raw : null);
+    if(resolved){
+      const disp = (reharm && ctx) ? reharmonizeSym(resolved, ctx, reharm) : resolved;
+      chords.push({ sym:disp, src:raw, start, end, line:li, chord:parseChord(disp), kind:'chord' });
+    } else if(/^[A-Ga-g]/.test(raw)){
+      chords.push({ sym:raw, src:raw, start, end, line:li, chord:parseChord(raw), kind:'error' });
+    } else {
+      chords.push({ sym:raw, src:raw, start, end, line:li, chord:parseChord(raw), kind:'text' });
+    }
   }
   return chords;
 }
-function tokenizeBars(line, li){
-  // split on | but keep char positions
-  const bars=[]; let pos=0; const parts=line.split('|');
-  let cursor=0;
+function tokenizeBars(line, li, ctx, reharm, base){
+  const bars=[]; const parts=line.split('|'); let cursor=base||0;
   parts.forEach((p,i)=>{
     const startIdx = cursor;
     cursor += p.length + 1; // +1 for the '|'
     if(p.trim()==='' && (i===0 || i===parts.length-1)) return;
     if(p.trim()==='') { bars.push({chords:[]}); return; }
-    bars.push({ chords: tokenizeBarChords(p, li, startIdx) });
+    bars.push({ chords: tokenizeBarChords(p, li, startIdx, ctx, reharm) });
   });
   return bars;
 }
-function tokenizeLyric(line, li){
-  const segs=[]; const re=/\[([^\]]+)\]/g; let last=0; let m;
-  let pending=null;
-  // we walk: text before a bracket belongs to the *previous* chord
+function tokenizeLyric(line, li, ctx, reharm){
+  const segs=[]; const re=/\[([^\]]+)\]/g; let m;
   let idx=0;
   const tokens=[];
   while((m=re.exec(line))){
     const before = line.slice(idx, m.index);
     tokens.push({type:'text', text:before});
-    tokens.push({type:'chord', sym:m[1], start:m.index+1, end:m.index+1+m[1].length, chord:parseChord(m[1]), line:li});
+    const rawc=m[1];
+    const resolved = ctx ? resolveChordToken(rawc, ctx) : (parseChord(rawc).valid ? rawc : null);
+    const disp = resolved ? ((reharm && ctx) ? reharmonizeSym(resolved, ctx, reharm) : resolved) : rawc;
+    tokens.push({type:'chord', sym:disp, src:rawc, start:m.index+1, end:m.index+1+rawc.length, chord:parseChord(disp), line:li});
     idx = re.lastIndex;
   }
   tokens.push({type:'text', text: line.slice(idx)});
@@ -826,6 +927,18 @@ function chipHtml(tok, ctx){
   return `<span class="chip fn-${a.fn}" ${dataAttrs} data-notes="${escapeAttr(notes)}">`
        + `<span class="sym">${escapeHtml(tok.sym)}</span><span class="rn">${escapeHtml(a.roman)}</span>${notesLine}</span>`;
 }
+function barRowHtml(bars, ctx){
+  let h = `<div class="bar-row">`;
+  bars.forEach(bar=>{
+    h += `<div class="bar">`;
+    if(bar.chords.length===0) h += `<span style="color:var(--muted)">·</span>`;
+    bar.chords.forEach(ch=> h += ch.kind==='text'
+      ? `<span class="bar-txt">${escapeHtml(ch.sym)}</span>`
+      : chipHtml(ch, ctx));
+    h += `</div>`;
+  });
+  return h + `</div>`;
+}
 function render(doc){
   _lintCount = 0;
   let html='';
@@ -842,18 +955,17 @@ function render(doc){
       else if(b.isChange && b.dkind==='bpm')
         html += `<div class="change-badge bpm">→ ♩ = <b>${escapeHtml(b.value)}</b></div>`;
     }
+    else if(b.type==='comment') { /* non-rendering annotation */ }
     else if(b.type==='section') html += `<div class="section-h">${escapeHtml(b.text)}</div>`;
+    else if(b.type==='named'){
+      const tag = b.ref ? '@'+b.name : b.name;
+      html += `<div class="named-label">${escapeHtml(tag)}</div>`;
+      if(b.missing) html += `<div class="named-missing">undefined progression "${escapeHtml(b.name)}"</div>`;
+      else html += barRowHtml(b.bars, ctx);
+    }
     else if(b.type==='bars'){
-      html += `<div class="bar-row">`;
-      b.bars.forEach(bar=>{
-        html += `<div class="bar">`;
-        if(bar.chords.length===0) html += `<span style="color:var(--muted)">·</span>`;
-        bar.chords.forEach(ch=> html += ch.kind==='text'
-          ? `<span class="bar-txt">${escapeHtml(ch.sym)}</span>`
-          : chipHtml(ch, ctx));
-        html += `</div>`;
-      });
-      html += `</div>`;
+      html += barRowHtml(b.bars, ctx);
+      if(b.reharm) html += `<div class="reharm-tag">~${escapeHtml(b.reharm)}</div>`;
     }
     else if(b.type==='lyric'){
       html += `<div class="lyric-line">`;
@@ -924,20 +1036,63 @@ document.getElementById('notesBtn').onclick = function(){
 };
 
 const DEFAULT_DOC =
-`title: Untitled Song
+`title: The Musiicode Demo
 key: C
 time: 4/4
-bpm: 120
+bpm: 96
 
-# Intro
-| Cmaj7 | Am7 | Dm7 | G7 |
+// Lines that start with // are comments. You can read them here in the
+// editor, but they never show up in the preview. (Notes-to-self live here.)
 
-# Verse
-[C]Twinkle [G]twinkle [Am]little [F]star
-[F]How I [C]wonder [G]what you [C]are
+# Type on the left, watch the right
+[C]Every[G]thing you [Am]type back [F]here
+[C]becomes the [G]chart you [F]read up [C]there
 
-# Bridge
-| Em7 | A7 | Dm7 | G7 |
+# Chords ride above the lyrics
+[Am]Wrap a chord in [F]brackets and it [C]sits over the [G]word
+[F]hover one to [G]see its notes and a [C]little piano [G]board
+
+# Click any chord for substitutions
+[C]Click me in the [Am]preview and I'll [F]offer up some [G]swaps
+[F]and my color [G]names my job: [C]tonic, sub, or [G]top
+
+# Roman numerals bend to any key
+| I | V | vi | IV |
+[I]Write me as [V]numbers and I'll [vi]follow the [IV]key
+[I]tap the [V]arrows up a[vi]bove and [IV]watch us all agree
+
+key: Eb
+
+# Same numerals — but now in E-flat
+| I | V | vi | IV |
+[I]Up here the [V]numbers didn't [vi]change a [IV]bit
+[I]but now we're [V]Eb chords — just [vi]see the [IV]shift
+
+key: C
+
+# Define a progression once, reuse it
+chorus = | I | V | vi | IV |
+@chorus
+[I]Set me with an [V]equals sign, then [vi]call me with an [IV]@
+
+tempo: 140
+
+# Tempo can shift mid-song too
+[C]We just sped [G]up — see the [Am]badge and the [F]header
+
+# Reharmonize live (your typing stays put)
+| C Am F G | ~
+[C]Add a [Am]tilde and I'll [F]grow some [G]sevenths
+| Cmaj7 Am7 Dm7 G7 | ~simple
+[C]or say "[Am]simple" to [Dm]melt back to [G]triads
+
+# A few more tricks
+[C]Hit back[G]slash to drop a [Am]bar — no [F]shift
+[C]type a [G]> after a chord for [Am]likely next [F]picks
+[C]fat-finger like [Cxyz]this and I'll [G]flag it in [F]red
+[C]swap themes up [G]top — yes, [Am]one is a [F]rainbow
+
+// That's the whole toolbox. Clear it out and write your own song!
 `;
 /* ---- autosave: restore last document, persist on edit ---- */
 const LS_DOC = 'musiicode-doc';
@@ -960,6 +1115,17 @@ srcEl.addEventListener('input', ()=>{
   refresh(); maybeAutocomplete();
   setSaveStatus('Editing…', true);
   clearTimeout(saveTimer); saveTimer = setTimeout(autosave, 600);
+});
+// type "\" to instantly get a "|" bar line (no shift needed)
+srcEl.addEventListener('keydown', e=>{
+  if(e.key==='\\' && !e.metaKey && !e.ctrlKey && !e.altKey){
+    e.preventDefault();
+    const s=srcEl.selectionStart, en=srcEl.selectionEnd;
+    srcEl.value=srcEl.value.slice(0,s)+'|'+srcEl.value.slice(en);
+    srcEl.selectionStart=srcEl.selectionEnd=s+1;
+    refresh(); setSaveStatus('Editing…', true);
+    clearTimeout(saveTimer); saveTimer=setTimeout(autosave,600);
+  }
 });
 
 /* ---- new / open file / save source ---- */
@@ -989,6 +1155,64 @@ function exportSource(){
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
   toast('Saved source (.txt)');
+}
+
+/* ---- bake ~ reharmonizations into the source text ---- */
+const CHORD_TOKEN_RE = /[A-Ga-g][^\s|~]*|[b#]?[ivIV]+[^\s|~]*/g;
+function applyReharm(){
+  const full = srcEl.value, lines = full.split('\n');
+  let count = 0;
+  const out = lines.map((raw, i)=>{
+    const rhm = /\s*~(\w*)\s*$/.exec(raw);
+    if(!rhm) return raw;
+    const cand = raw.slice(0, rhm.index);
+    const ctx = activeKeyAt(full, i);
+    const chordish = cand.includes('|') || (cand.trim().split(/\s+/).filter(Boolean).every(t=>!!resolveChordToken(t, ctx)) && cand.trim()!=='');
+    if(!chordish) return raw;
+    const mode = parseReharm(rhm[1]);
+    count++;
+    return cand.replace(CHORD_TOKEN_RE, tok=>{
+      const r = resolveChordToken(tok, ctx);
+      return r ? reharmonizeSym(r, ctx, mode) : tok;
+    }).replace(/\s+$/,'');
+  });
+  if(count){ srcEl.value = out.join('\n'); refresh(); autosave(); toast('Applied reharmonization to '+count+' line'+(count>1?'s':'')); }
+  else toast('No ~ lines found');
+}
+
+/* ---- convert the whole song between chords and Roman numerals ---- */
+function convertDoc(toRoman){
+  const full = srcEl.value, lines = full.split('\n');
+  const conv = (tok, ctx)=>{
+    if(toRoman){
+      const c = parseChord(tok);
+      if(!c.valid || c.bass!=null) return tok;            // skip non-chords & slash chords (bass not preserved)
+      return analyze(c, ctx.keyPc, ctx.minor).roman;
+    }
+    if(parseChord(tok).valid) return tok;                  // already a chord
+    return romanToChord(tok, ctx) || tok;
+  };
+  const out = lines.map((raw, i)=>{
+    if(raw.trim()==='' || /^\s*(\/\/|#|@)/.test(raw)) return raw;
+    if(/^\s*(title|key|time|bpm|tempo)\s*:/i.test(raw)) return raw;
+    const ctx = activeKeyAt(full, i);
+    let prefix='', body=raw;
+    const dm = /^(\s*[A-Za-z][\w-]*\s*=\s*)(.+)$/.exec(raw);   // named def: only convert the value
+    if(dm && dm[2].includes('|')){ prefix = dm[1]; body = dm[2]; }
+    let bodyT;
+    if(/\[[^\]]+\]/.test(body)){
+      bodyT = body.replace(/\[([^\]]+)\]/g, (m,s)=>'['+conv(s.trim(), ctx)+']');
+    } else if(body.includes('|') || lineIsChordish(body, ctx)){
+      bodyT = body.replace(CHORD_TOKEN_RE, t=>conv(t, ctx));
+    } else { return raw; }
+    return prefix + bodyT;
+  });
+  srcEl.value = out.join('\n'); refresh(); autosave();
+  toast(toRoman ? 'Converted chords → Roman numerals' : 'Converted Roman → chords');
+}
+function lineIsChordish(s, ctx){
+  const t = s.replace(/\s*~\w*\s*$/,'').trim().split(/\s+/).filter(Boolean);
+  return t.length>0 && t.every(x=>!!resolveChordToken(x, ctx));
 }
 
 /* ---- replace a chord at an exact source location ---- */
@@ -1205,11 +1429,15 @@ function leadSheetLines(segs){
 function buildMarkdown(d){
   const meta = `**Key:** ${d.key}  ·  **Time:** ${d.time}` + (d.bpm ? `  ·  **BPM:** ${d.bpm}` : '');
   const out = ['# ' + (d.title || 'Untitled Song'), '', meta, ''];
+  const barsLine = bars => '`| ' + bars.map(bar => bar.chords.map(c=>c.sym).join(' ') || '·').join(' | ') + ' |`';
   d.blocks.forEach(b=>{
     if(b.type==='section'){ out.push('', '## ' + b.text, ''); }
+    else if(b.type==='comment'){ /* skip */ }
+    else if(b.type==='named'){
+      if(!b.missing){ out.push('**'+b.name+(b.ref?'':' =')+'** ' + barsLine(b.bars), ''); }
+    }
     else if(b.type==='bars'){
-      const line = b.bars.map(bar => bar.chords.map(c=>c.sym).join(' ') || '·').join(' | ');
-      out.push('`| ' + line + ' |`', '');
+      out.push(barsLine(b.bars), '');
     } else if(b.type==='lyric'){
       const {chordLine, lyricLine} = leadSheetLines(b.segs);
       out.push('```', chordLine, lyricLine, '```');
@@ -1281,9 +1509,13 @@ const COMMANDS = [
   {name:'Transpose down a whole tone', desc:'-2', run:()=>transposeDoc(-2)},
   {name:'Change key…', desc:'set target key', run:()=>{const v=prompt('Key:',doc.key); if(v) transposeDoc(0,v.trim());}},
   {name:'Set tempo (BPM)…', desc:'add or change BPM', run:()=>setBpm()},
+  {name:'Apply reharmonization', desc:'bake ~ lines into the source', run:()=>applyReharm()},
+  {name:'Convert chords → Roman numerals', desc:'make it key-independent', run:()=>convertDoc(true)},
+  {name:'Convert Roman numerals → chords', desc:'spell out the chords', run:()=>convertDoc(false)},
   {name:'Open theme menu', desc:'8 themes — dark, light, terminal, sepia, pastel, white-on-black, black-on-white, rainbow', run:()=>document.getElementById('themeBtn').click()},
   {name:'Toggle chord notes', desc:'show notes under every chord', run:()=>document.getElementById('notesBtn').click()},
   {name:'New blank song', desc:'clear the editor', run:()=>document.getElementById('newBtn').click()},
+  {name:'Load demo song', desc:'the feature showcase', run:()=>{ if(confirm('Load the demo song? This replaces the current text.')){ srcEl.value=DEFAULT_DOC; refresh(); autosave(); toast('Loaded the demo'); } }},
   {name:'Open file…', desc:'load a .txt / .md / chordpro', run:()=>document.getElementById('openBtn').click()},
   {name:'Save source (.txt)', desc:'download re-openable source', run:()=>exportSource()},
   {name:'Export to Markdown', desc:'download .md chart', run:()=>exportMarkdown()},
@@ -1442,6 +1674,24 @@ Next-chord suggestions:
   percentages (e.g. "| C > ") — pick one to insert it.
   (Likelihoods come from common harmony, not Hooktheory.)
 
+Roman numerals (transpose-proof):
+  | I | V | vi | IV |   renders as real chords in the key.
+  Works with quality/accidentals: V7, ii, vii°, bVII.
+
+Named progressions (reuse):
+  verse = | I | V | vi | IV |     defines it
+  @verse                          reuses it anywhere
+
+Reharmonize a line (live):
+  | C Am F G | ~          adds diatonic 7ths (jazz)
+  | C Am F G | ~simple    strips to triads
+  | C7 | ~tritone         tritone-subs the dominants
+
+Comments (not rendered):
+  // a whole-line note     or   | C | G |  // trailing note
+
+Shortcut:  type \\ to instantly insert a | bar line.
+
 INTERACT
   • Hover any chord → notes + a piano diagram of the shape
   • Click any chord in the preview → substitution menu (notes + keyboard)
@@ -1463,7 +1713,7 @@ function toast(msg){
 }
 
 /* expose engine for testing */
-window.MUSIICODE = { parseChord, analyze, transposeSymbol, getSubstitutions, getChordNotes, getChordTones, pianoSVG, parseDoc, noteToPc, pcToName, diatonicChord, nextChordSuggestions, activeKeyAt };
+window.MUSIICODE = { parseChord, analyze, transposeSymbol, getSubstitutions, getChordNotes, getChordTones, pianoSVG, parseDoc, noteToPc, pcToName, diatonicChord, nextChordSuggestions, activeKeyAt, romanToChord, reharmonizeSym, resolveChordToken };
 </script>
 </body>
 </html>
