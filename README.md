@@ -23,6 +23,18 @@ desktop app.
 | Command palette (⌘K) | Themes |
 | ![Command palette](docs/commands.png) | ![Musiicode themes](docs/themes.png) |
 
+## Why I built this
+
+I kept bouncing off the usual songwriting apps. The drag-and-drop ones felt slow and
+fiddly, and the ones built around rigid, strictly-structured bars got in my way more than
+they helped. What I actually wanted was fast, direct control over how my ideas looked on the
+page — to shape the visual representation as quickly as I could think it.
+
+That pull is what led to the core idea behind Musiicode: what if you could *program* your
+songwriting? Write the song like code — type chords, Roman numerals, sections, and saved
+progressions as plain text — and watch a clean, color-coded chart update live, with the
+theory worked out for you, as a bonus.
+
 ## Features
 
 - **Text-first editor** with a live preview pane.
@@ -109,6 +121,8 @@ self-contained and has no runtime dependencies.
 
 ## Roadmap
 
+- Guitar chord diagrams (fretboard shapes)
+- Chord inversions / voicing display
 - Beat-accurate chord placement within bars
 - Nashville-number view
 - Altered-dominant (`alt`) chord parsing
