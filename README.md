@@ -34,7 +34,9 @@ desktop app.
 - **Roman-numeral input** — write `| I | V | vi | IV |` and it renders real chords in the
   current key (transpose-proof); supports qualities/accidentals (`V7`, `ii`, `vii°`, `bVII`).
   Convert a whole song between chords and numerals either direction.
-- **Named progressions** — `verse = | I | V | vi | IV |`, then reuse anywhere with `@verse`.
+- **Saved progressions** — define `verse = | B | F# |` (or a `[B] [F#]` template); the
+  definition is hidden in the preview. Type `@verse` in the editor to expand it inline into
+  a `# verse` section plus the saved chords, ready to edit (e.g. type lyrics between them).
 - **Reharmonize operator** — append `~` to a chord line to add diatonic 7ths (`~simple`
   strips to triads, `~tritone` swaps dominants); live and non-destructive, or bake it in.
 - **Comments** — `//` whole-line or trailing notes that never render.

@@ -761,11 +761,11 @@ function getSubstitutions(chord, keyPc, useFlats, minor){
 function parseDoc(text){
   const lines = text.split('\n');
   const doc = { title:'', key:'C', time:'4/4', bpm:'', keyPc:0, minor:false, useFlats:false, blocks:[] };
-  // pre-pass: collect named-progression definitions ("name = | ... |")
+  // pre-pass: collect named-progression snippets ("name = | ... |" or "name = [B] [F#]")
   const defs = {};
   lines.forEach((l,i)=>{
     const dm = /^(\s*([A-Za-z][\w-]*)\s*=\s*)(.+)$/.exec(l);
-    if(dm && dm[3].includes('|')) defs[dm[2].toLowerCase()] = { value:dm[3].replace(/\s+$/,''), line:i, offset:dm[1].length };
+    if(dm && (dm[3].includes('|') || dm[3].includes('['))) defs[dm[2].toLowerCase()] = { value:dm[3].replace(/\s+$/,''), line:i, offset:dm[1].length };
   });
   // running state — key/tempo apply from where they appear downward
   let curKey='C', curKeyPc=0, curMinor=false, curFlats=false, curBpm='';
@@ -805,18 +805,20 @@ function parseDoc(text){
       doc.blocks.push({type:'section', text: line.replace(/^\s*#+\s*/,''), line:li, ...ctx()});
       return;
     }
-    // named-progression definition:  name = | ... |
+    // named-progression definition (a saved snippet):  name = | ... |   or   name = [B] [F#]
+    // hidden in the preview — it's source-side memory; the call (@name) is what renders.
     const defm = /^(\s*([A-Za-z][\w-]*)\s*=\s*)(.+)$/.exec(line);
-    if(defm && defm[3].includes('|')){
-      doc.blocks.push({type:'named', name:defm[2], bars: tokenizeBars(defm[3], li, ctx(), null, defm[1].length), line:li, ...ctx()});
+    if(defm && (defm[3].includes('|') || defm[3].includes('['))){
+      doc.blocks.push({type:'def', name:defm[2], line:li, ...ctx()});
       return;
     }
-    // reference:  @name
+    // reference left in the source:  @name   (renders the saved snippet as a fallback;
+    //   the main way to use it is to type @name in the editor and expand it inline)
     const refm = /^\s*@([A-Za-z][\w-]*)\s*$/.exec(line);
     if(refm){
       const d = defs[refm[1].toLowerCase()];
       doc.blocks.push(d
-        ? {type:'named', name:refm[1], ref:true, bars: tokenizeBars(d.value, d.line, ctx(), null, d.offset), line:li, ...ctx()}
+        ? {type:'named', name:refm[1], ref:true, ...valueBlock(d.value, d.line, ctx(), d.offset), line:li, ...ctx()}
         : {type:'named', name:refm[1], ref:true, missing:true, line:li, ...ctx()});
       return;
     }
@@ -841,7 +843,14 @@ function parseDoc(text){
     }
     doc.blocks.push({type:'plain', text:line, line:li, ...ctx()});
   });
+  doc.defs = defs;       // expose snippets for editor @-expansion
   return doc;
+}
+/* build the renderable fields for a snippet value: bars (| ... |) or a lyric line ([B] [F#]) */
+function valueBlock(value, li, ctx, offset){
+  return value.includes('[')
+    ? { segs: tokenizeLyric(value, li, ctx, null) }
+    : { bars: tokenizeBars(value, li, ctx, null, offset||0) };
 }
 
 function tokenizeBarChords(text, li, offset, ctx, reharm){
@@ -902,7 +911,6 @@ function tokenizeLyric(line, li, ctx, reharm){
   }
   return segs;
 }
-
 /* ============================================================
    RENDERING
    ============================================================ */
@@ -939,6 +947,13 @@ function barRowHtml(bars, ctx){
   });
   return h + `</div>`;
 }
+function lyricRowHtml(segs, ctx){
+  let h = `<div class="lyric-line">`;
+  segs.forEach(seg=> h += seg.chord
+    ? `<span class="lyseg">${chipHtml(seg.chord, ctx)}<span class="ly">${escapeHtml(seg.ly)}</span></span>`
+    : `<span class="lyseg nochord"><span class="ly">${escapeHtml(seg.ly)}</span></span>`);
+  return h + `</div>`;
+}
 function render(doc){
   _lintCount = 0;
   let html='';
@@ -947,40 +962,39 @@ function render(doc){
         + `<span>Time <b>${escapeHtml(doc.time)}</b></span>`
         + (doc.bpm ? `<span>♩ = <b>${escapeHtml(doc.bpm)}</b></span>` : '')
         + `</div>`;
+  // collect visible block HTML; blank lines only space *between* visible blocks
+  // (hidden blocks — def/comment — never contribute layout)
+  const parts = []; let pendingBlanks = 0;
   doc.blocks.forEach(b=>{
     const ctx = { keyPc:b.keyPc, minor:b.minor, useFlats:b.useFlats };
+    if(b.type==='blank'){ pendingBlanks++; return; }
+    if(b.type==='comment' || b.type==='def') return;        // hidden, no layout
+    let piece = '';
     if(b.type==='directive'){
       if(b.isChange && b.dkind==='key')
-        html += `<div class="change-badge key">→ Key <b>${escapeHtml(b.value)}</b></div>`;
+        piece = `<div class="change-badge key">→ Key <b>${escapeHtml(b.value)}</b></div>`;
       else if(b.isChange && b.dkind==='bpm')
-        html += `<div class="change-badge bpm">→ ♩ = <b>${escapeHtml(b.value)}</b></div>`;
+        piece = `<div class="change-badge bpm">→ ♩ = <b>${escapeHtml(b.value)}</b></div>`;
     }
-    else if(b.type==='comment') { /* non-rendering annotation */ }
-    else if(b.type==='section') html += `<div class="section-h">${escapeHtml(b.text)}</div>`;
+    else if(b.type==='section') piece = `<div class="section-h">${escapeHtml(b.text)}</div>`;
     else if(b.type==='named'){
-      const tag = b.name;   // show the name without the "@" in the preview
-      html += `<div class="named-label">${escapeHtml(tag)}</div>`;
-      if(b.missing) html += `<div class="named-missing">undefined progression "${escapeHtml(b.name)}"</div>`;
-      else html += barRowHtml(b.bars, ctx);
+      piece = `<div class="named-label">${escapeHtml(b.name)}</div>`;
+      if(b.missing) piece += `<div class="named-missing">undefined snippet "${escapeHtml(b.name)}"</div>`;
+      else if(b.segs) piece += lyricRowHtml(b.segs, ctx);
+      else piece += barRowHtml(b.bars, ctx);
     }
     else if(b.type==='bars'){
-      html += barRowHtml(b.bars, ctx);
-      if(b.reharm) html += `<div class="reharm-tag">~${escapeHtml(b.reharm)}</div>`;
+      piece = barRowHtml(b.bars, ctx);
+      if(b.reharm) piece += `<div class="reharm-tag">~${escapeHtml(b.reharm)}</div>`;
     }
-    else if(b.type==='lyric'){
-      html += `<div class="lyric-line">`;
-      b.segs.forEach(seg=>{
-        if(seg.chord){
-          html += `<span class="lyseg">${chipHtml(seg.chord, ctx)}<span class="ly">${escapeHtml(seg.ly)}</span></span>`;
-        } else {
-          html += `<span class="lyseg nochord"><span class="ly">${escapeHtml(seg.ly)}</span></span>`;
-        }
-      });
-      html += `</div>`;
-    }
-    else if(b.type==='plain' && b.text.trim()!=='') html += `<div class="plain-lyric">${escapeHtml(b.text)}</div>`;
-    else if(b.type==='blank') html += `<div style="height:8px"></div>`;
+    else if(b.type==='lyric') piece = lyricRowHtml(b.segs, ctx);
+    else if(b.type==='plain' && b.text.trim()!=='') piece = `<div class="plain-lyric">${escapeHtml(b.text)}</div>`;
+    if(piece===''){ return; }                               // nothing visible (e.g. blank directive)
+    if(parts.length && pendingBlanks) for(let i=0;i<pendingBlanks;i++) parts.push(`<div style="height:8px"></div>`);
+    pendingBlanks = 0;
+    parts.push(piece);
   });
+  html += parts.join('');
   html += legendHtml();
   previewEl.innerHTML = html;
   const lint = document.getElementById('lintStatus');
@@ -1070,10 +1084,10 @@ key: Eb
 
 key: C
 
-# Define a progression once, reuse it
+# Save a progression, then call it by name
 chorus = | I | V | vi | IV |
 @chorus
-[I]Set me with an [V]equals sign, then [vi]call me with an [IV]@
+[I]The "=" line is [V]hidden in the preview — [vi]@chorus calls it back, [IV]labeled
 
 tempo: 140
 
@@ -1570,6 +1584,21 @@ function maybeAutocomplete(){
   const curLine=upto.slice(lineStart);
   if(/^\s*(title|key|time|bpm|tempo)\s*:/i.test(curLine) || /^\s*#/.test(curLine)){ hideAc(); return; }
 
+  // "@name": expand a saved snippet into the source (memory / macro)
+  const atM = /@([A-Za-z][\w-]*)?$/.exec(upto);
+  if(atM){
+    const defs = (doc && doc.defs) || {};
+    const partial = (atM[1]||'').toLowerCase();
+    const names = Object.keys(defs).filter(n=>n.startsWith(partial));
+    if(names.length){
+      acMode='expand'; acWordStart = pos - atM[0].length;   // start at the "@"
+      acTitle = 'Insert saved progression';
+      acItems = names.map(n=>({ sym:'@'+n, q:defs[n].value, expand:defs[n].value, name:n }));
+      acActive=0; renderAc(); positionAc(pos);
+    } else hideAc();
+    return;
+  }
+
   // ">" operator: suggest the next chord based on the preceding chord + active key
   if(upto[pos-1]==='>'){
     const seg = upto.slice(lineStart, pos-1);
@@ -1626,6 +1655,10 @@ function acceptAc(i){
   if(acMode==='suggest'){           // replace the ">"; add a leading space if glued to a chord
     const before=srcEl.value[acWordStart-1];
     if(before && !/[\s|]/.test(before)) insert=' '+insert;
+  } else if(acMode==='expand'){     // replace "@name" with a "# name" header + the saved chords
+    const ls = srcEl.value.lastIndexOf('\n', acWordStart-1)+1;
+    const beforeOnLine = srcEl.value.slice(ls, acWordStart);
+    insert = /^\s*$/.test(beforeOnLine) ? ('# '+it.name+'\n'+it.expand) : it.expand;
   } else if(acMode==='chord' && srcEl.value[acWordStart-1]==='[' && srcEl.value[pos]!==']'){
     insert += ']';                  // completing a chord inside a lyric bracket -> close it
   }
@@ -1680,9 +1713,13 @@ Roman numerals (transpose-proof):
   | I | V | vi | IV |   renders as real chords in the key.
   Works with quality/accidentals: V7, ii, vii°, bVII.
 
-Named progressions (reuse):
-  verse = | I | V | vi | IV |     defines it
-  @verse                          reuses it anywhere
+Saved progressions (memory):
+  verse = | B | F# |        save a snippet — the "=" line is hidden in the
+                            preview (it's just for you, in the source).
+  @verse                    type it in the editor and pick it from the list;
+                            it drops into your source as a "# verse" section
+                            plus the chords, ready to edit (type lyrics
+                            between [B] [F#]).
 
 Reharmonize a line (live):
   | C Am F G | ~          adds diatonic 7ths (jazz)

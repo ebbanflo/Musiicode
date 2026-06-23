@@ -6,8 +6,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 ## [0.4.1] — 2026-06-22
 
 ### Changed
+- **Named progressions are now saved snippets that expand inline.** Define `verse = | B | F# |`
+  (bar chords) or `verse = [B] [F#]` (a chords-over-lyrics template). The definition line is
+  **hidden in the preview** and contributes no layout — it's source-side memory. Typing
+  `@verse` in the editor and picking it from the autocomplete **expands it into your source**
+  as a `# verse` section plus the saved chords, ready to edit (e.g. type lyrics between
+  `[B] [F#]`). Replaces the earlier preview-only reference and the lyric-spread experiment.
 - Choosing a chord from the autocomplete inside a lyric bracket now auto-closes the `]`.
-- Named-progression references render with a clean name label (no leading `@`) in the preview.
 
 ## [0.4.0] — 2026-06-22
 
