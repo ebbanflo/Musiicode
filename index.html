@@ -958,7 +958,7 @@ function render(doc){
     else if(b.type==='comment') { /* non-rendering annotation */ }
     else if(b.type==='section') html += `<div class="section-h">${escapeHtml(b.text)}</div>`;
     else if(b.type==='named'){
-      const tag = b.ref ? '@'+b.name : b.name;
+      const tag = b.name;   // show the name without the "@" in the preview
       html += `<div class="named-label">${escapeHtml(tag)}</div>`;
       if(b.missing) html += `<div class="named-missing">undefined progression "${escapeHtml(b.name)}"</div>`;
       else html += barRowHtml(b.bars, ctx);
@@ -1626,6 +1626,8 @@ function acceptAc(i){
   if(acMode==='suggest'){           // replace the ">"; add a leading space if glued to a chord
     const before=srcEl.value[acWordStart-1];
     if(before && !/[\s|]/.test(before)) insert=' '+insert;
+  } else if(acMode==='chord' && srcEl.value[acWordStart-1]==='[' && srcEl.value[pos]!==']'){
+    insert += ']';                  // completing a chord inside a lyric bracket -> close it
   }
   srcEl.value=srcEl.value.slice(0,acWordStart)+insert+srcEl.value.slice(pos);
   const np=acWordStart+insert.length;

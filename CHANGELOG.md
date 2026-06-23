@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.1] — 2026-06-22
+
+### Changed
+- Choosing a chord from the autocomplete inside a lyric bracket now auto-closes the `]`.
+- Named-progression references render with a clean name label (no leading `@`) in the preview.
+
 ## [0.4.0] — 2026-06-22
 
 ### Added
